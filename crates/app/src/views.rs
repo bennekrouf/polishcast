@@ -2,9 +2,10 @@
 
 use crate::editor::Editor;
 use crate::{platform, takes};
+use dioxus::desktop::tao::event::Event as TaoEvent;
 use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon, TrayIconBuilder};
-use dioxus::desktop::{use_global_shortcut, use_muda_event_handler, window};
+use dioxus::desktop::{use_global_shortcut, use_muda_event_handler, use_wry_event_handler, window};
 use dioxus::prelude::*;
 use small_video_capture::{Event, Options, Recorder};
 use small_video_core::take;
@@ -136,6 +137,14 @@ pub fn App() -> Element {
         if e.id == record_id {
             toggle(());
         } else if e.id == show_id {
+            window().set_visible(true);
+            window().set_focus();
+        }
+    });
+    // Clicking the app's icon (Dock, Finder, Launchpad) while it runs with the window closed:
+    // macOS asks the app to reopen, and Dioxus leaves that unanswered.
+    use_wry_event_handler(|event, _| {
+        if let TaoEvent::Reopen { .. } = event {
             window().set_visible(true);
             window().set_focus();
         }
