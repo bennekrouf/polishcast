@@ -16,6 +16,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- When you click the Small Video icon in the Dock, Finder, or Launchpad while
+  the window is closed, the app now opens and focuses the window. This makes it
+  easier to access the app quickly.
+
 ## [0.1.4] - 2026-10-11
 
 ### Added
