@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 use serde::Deserialize;
 use small_video_core::blanks::redetect;
 use small_video_core::history::History;
-use small_video_core::project::{Aspect, Background};
+use small_video_core::project::{Aspect, Background, SPEEDS};
 use small_video_core::zoom::{self, Zoom};
 use small_video_core::{take, BlankParams, EventLog, Loudness, Project};
 use small_video_export::{Progress, Settings};
@@ -224,7 +224,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
 
     let project = doc.project.read();
     let duration = project.duration.max(0.001);
-    let video_duration = project.timeline().duration();
+    let video_duration = project.video_duration();
     let cutting = project.blanks.is_some();
     let background = match &project.style.background {
         Background::Color(c) => c.clone(),
@@ -287,6 +287,19 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     span { class: "time",
                         span { id: "sv-time", "0:00" }
                         " / {clock(video_duration)}"
+                    }
+                    label { class: "speed", title: "How fast the video plays: the preview and the export",
+                        "Speed "
+                        select {
+                            onchange: move |e| {
+                                if let Ok(speed) = e.value().parse::<f64>() {
+                                    doc.change(|p| p.speed = speed);
+                                }
+                            },
+                            for &s in SPEEDS {
+                                option { key: "{s}", value: "{s}", selected: project.speed() == s, "{s}×" }
+                            }
+                        }
                     }
                     span { class: "spacer" }
                     button { onclick: move |_| add_zoom(()), title: "Z", "+ Zoom" }

@@ -21,6 +21,21 @@ pub struct Project {
     pub blanks: Option<BlankParams>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cuts: Vec<Cut>,
+    /// How much faster than recorded the video plays: 1.5 shows a minute of recording in 40
+    /// seconds. The sound is sped up with it, at the same pitch.
+    #[serde(default = "normal_speed", skip_serializing_if = "is_normal_speed")]
+    pub speed: f64,
+}
+
+/// The speeds the editor offers.
+pub const SPEEDS: &[f64] = &[1.0, 1.25, 1.5, 2.0, 3.0];
+
+fn normal_speed() -> f64 {
+    1.0
+}
+
+fn is_normal_speed(speed: &f64) -> bool {
+    *speed == 1.0
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -91,7 +106,22 @@ impl Project {
             style: Style::default(),
             blanks: None,
             cuts: Vec::new(),
+            speed: 1.0,
         }
+    }
+
+    /// The playback speed, kept to what playback and export can do.
+    pub fn speed(&self) -> f64 {
+        if self.speed.is_finite() {
+            self.speed.clamp(0.25, 4.0)
+        } else {
+            1.0
+        }
+    }
+
+    /// Length of the exported video: the timeline, at the playback speed.
+    pub fn video_duration(&self) -> f64 {
+        self.timeline().duration() / self.speed()
     }
 
     /// The video's timeline: the recording less the blanks cut, if blank cutting is on.
@@ -112,6 +142,18 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projects_saved_before_speed_existed_play_at_normal_speed() {
+        let mut p = Project::new(60.0, 2880, 1800, &EventLog::default());
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(!json.contains("speed"), "1x isn't written");
+        assert_eq!(serde_json::from_str::<Project>(&json).unwrap().speed, 1.0);
+        p.speed = 1.5;
+        assert_eq!(p.video_duration(), 40.0);
+        p.speed = f64::NAN;
+        assert_eq!(p.speed(), 1.0);
+    }
 
     #[test]
     fn round_trips_through_json() {

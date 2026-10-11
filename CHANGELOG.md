@@ -16,6 +16,16 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- A speed for each video: **Speed** next to the play button speeds it up to
+  1.25×, 1.5×, 2× or 3×. The preview plays at that speed so you can check it
+  reads well, the time shown is the exported video's, and the export comes out
+  at that speed. The voice is sped up with the picture and keeps its pitch;
+  zooms and the cursor stay in step.
+
 ## [0.1.3] - 2026-10-09
 
 ### Added

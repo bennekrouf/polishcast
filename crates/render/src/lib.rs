@@ -121,7 +121,8 @@ impl Scene {
             radius: first.radius,
             shadow: first.shadow,
             skips: timeline.skips(self.project.duration),
-            duration: timeline.duration(),
+            speed: self.project.speed(),
+            duration: self.project.video_duration(),
             frames,
         }
     }
@@ -141,7 +142,9 @@ pub struct Track {
     pub shadow: Option<Shadow>,
     /// Stretches of the recording left out of the video (blanks cut), which playback jumps over.
     pub skips: Vec<(f64, f64)>,
-    /// Length of the video, without them.
+    /// How much faster than recorded the preview plays.
+    pub speed: f64,
+    /// Length of the video, without them and at that speed.
     pub duration: f64,
     /// Per frame: source viewport x, y, size; cursor x, y, size in output pixels (size 0 when
     /// the cursor is out of view).

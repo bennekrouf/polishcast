@@ -79,6 +79,12 @@
           v.currentTime = Math.max(v.currentTime, 0.001);
         }
         const last = t.frames.length / STRIDE - 1;
+        // The video's speed: the browser plays faster at the same pitch, as the export does.
+        const speed = t.speed || 1;
+        if (v.playbackRate !== speed) {
+          v.playbackRate = speed;
+          v.preservesPitch = true;
+        }
         let time = v.currentTime;
         // Jump over the blanks cut while playing; paused, a cut can still be looked at.
         const skip = (t.skips || []).find(([s, e]) => time >= s && time < e - 0.001);
@@ -113,9 +119,9 @@
         const playhead = document.getElementById("sv-playhead");
         if (playhead) playhead.style.left = pct(Math.min(time, this.duration()), this.duration() || 1);
         const label = document.getElementById("sv-time");
-        // Video time, as exported: the recording time less what's cut before it.
+        // Video time, as exported: the recording time less what's cut before it, at the speed.
         const cutBefore = (t.skips || []).reduce((sum, [s, e]) => sum + Math.max(0, Math.min(e, time) - s), 0);
-        if (label) label.textContent = clock(time - cutBefore);
+        if (label) label.textContent = clock((time - cutBefore) / speed);
 
         const playing = !v.paused;
         if (this.send && (playing !== this.sent.playing || Math.abs(time - this.sent.t) > 0.1)) {

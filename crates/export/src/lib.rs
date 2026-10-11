@@ -126,17 +126,24 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     let compositor = Compositor::new(&scene, width, height);
     let (sw, sh) = source_size(&scene, width, height);
     // Blanks cut: the picture skips them frame by frame, the sound through a filter graph.
+    // Faster than recorded: the recording is read at `fps × speed` and every frame kept is
+    // written at `fps`, and the sound is sped up in the same graph.
     let timeline = scene.project.timeline();
+    let speed = scene.project.speed();
+    let read_fps = fps as f64 * speed;
     let cutting = timeline.parts.len() != 1 || timeline.duration() < scene.project.duration;
-    let cut_sound = cutting && sound::has_audio(&ffmpeg, &screen)?;
-    let total = (timeline.duration() * fps as f64).ceil() as u64;
+    let sound_filter = match sound::filter(&timeline, cutting, speed) {
+        Some(graph) if sound::has_audio(&ffmpeg, &screen)? => Some(graph),
+        _ => None,
+    };
+    let total = (timeline.duration() * fps as f64 / speed).ceil() as u64;
     progress.total.store(total.max(1), Ordering::Relaxed);
     progress.done.store(0, Ordering::Relaxed);
 
     let mut decoder = tools::command(&ffmpeg)
         .args(["-v", "error", "-nostdin", "-i"])
         .arg(&screen)
-        .args(["-an", "-vf", &format!("fps={fps},scale={sw}:{sh}:flags=bicubic")])
+        .args(["-an", "-vf", &format!("fps={read_fps:.6},scale={sw}:{sh}:flags=bicubic")])
         .args(["-f", "rawvideo", "-pix_fmt", "rgba", "-"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -149,8 +156,8 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
         .args(["-s", &format!("{width}x{height}"), "-r", &fps.to_string(), "-i", "-"])
         .arg("-i")
         .arg(&screen)
-        .args(if cut_sound {
-            vec!["-filter_complex".to_string(), sound::cut_filter(&timeline), "-map".into(), "0:v:0".into()]
+        .args(if let Some(graph) = &sound_filter {
+            vec!["-filter_complex".to_string(), graph.clone(), "-map".into(), "0:v:0".into()]
                 .into_iter()
                 .chain(["-map".into(), "[aout]".into()])
                 .collect::<Vec<String>>()
@@ -168,7 +175,7 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
         .context("Starting ffmpeg")?;
     let encoder_errors = collect(encoder.stderr.take());
 
-    let pumped = pump(&mut decoder, &mut encoder, &scene, &timeline, &compositor, (sw, sh), fps, progress, cancel);
+    let pumped = pump(&mut decoder, &mut encoder, &scene, &timeline, &compositor, (sw, sh), read_fps, progress, cancel);
     if pumped.is_err() {
         let _ = decoder.kill();
         let _ = encoder.kill();
@@ -202,7 +209,8 @@ fn pump(
     timeline: &Timeline,
     compositor: &Compositor,
     (sw, sh): (u32, u32),
-    fps: u32,
+    // The rate the recording is read at: the export's, times the playback speed.
+    read_fps: f64,
     progress: &Progress,
     cancel: &AtomicBool,
 ) -> Result<()> {
@@ -222,7 +230,7 @@ fn pump(
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
             Err(e) => return Err(e.into()),
         }
-        let t = j as f64 / fps as f64;
+        let t = j as f64 / read_fps;
         j += 1;
         if !timeline.shows(t) {
             continue;

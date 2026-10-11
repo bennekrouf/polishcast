@@ -57,6 +57,39 @@ pub fn loudness(ffmpeg: &Path, file: &Path) -> Result<Option<Loudness>> {
     Ok(Some(Loudness { window: WINDOW_SECS, db }))
 }
 
+/// ffmpeg's `atempo` speeds sound up without raising its pitch, by at most 2× per filter, so a
+/// faster speed is a chain: 3× is 2× then 1.5×.
+pub fn atempo(speed: f64) -> String {
+    let mut left = speed;
+    let mut steps = Vec::new();
+    while left > 2.0 + 1e-9 {
+        steps.push("atempo=2".to_string());
+        left /= 2.0;
+    }
+    while left < 0.5 - 1e-9 {
+        steps.push("atempo=0.5".to_string());
+        left /= 0.5;
+    }
+    steps.push(format!("atempo={left:.6}"));
+    steps.join(",")
+}
+
+/// The filter graph for the sound, taking input 1's and producing `[aout]`: the timeline's
+/// parts when blanks are cut, sped up when `speed` isn't 1. `None` when the sound is used as is.
+pub fn filter(timeline: &Timeline, cutting: bool, speed: f64) -> Option<String> {
+    let fast = (speed - 1.0).abs() > 1e-9;
+    match (cutting, fast) {
+        (false, false) => None,
+        (true, false) => Some(cut_filter(timeline)),
+        (false, true) => Some(format!("[1:a]{ALIGN},{}[aout]", atempo(speed))),
+        (true, true) => {
+            let cut = cut_filter(timeline);
+            let cut = cut.strip_suffix("[aout]").unwrap_or(&cut);
+            Some(format!("{cut}[acut];[acut]{}[aout]", atempo(speed)))
+        }
+    }
+}
+
 /// Seconds faded out and in at each cut, so a cut never clicks.
 const FADE_SECS: f64 = 0.01;
 
@@ -86,6 +119,18 @@ pub fn cut_filter(timeline: &Timeline) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn speeding_up_keeps_the_pitch_in_steps_of_at_most_two() {
+        assert_eq!(atempo(1.5), "atempo=1.500000");
+        assert_eq!(atempo(2.0), "atempo=2.000000");
+        assert_eq!(atempo(3.0), "atempo=2,atempo=1.500000");
+        let tl = Timeline { parts: vec![(0.0, 10.0)] };
+        assert_eq!(filter(&tl, false, 1.0), None);
+        assert_eq!(filter(&tl, false, 2.0).unwrap(), "[1:a]aresample=async=1:first_pts=0,atempo=2.000000[aout]");
+        let both = filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, true, 1.25).unwrap();
+        assert!(both.contains("concat=n=2:v=0:a=1[acut];[acut]atempo=1.250000[aout]"), "{both}");
+    }
 
     #[test]
     fn the_filter_keeps_each_part() {

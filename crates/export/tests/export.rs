@@ -153,3 +153,53 @@ fn blanks_are_cut_from_picture_and_sound() {
     assert!(small_video_core::blanks::detect(&after, expected, &params).is_empty(), "a silence is left");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn a_faster_speed_shortens_picture_and_sound() {
+    let Some(ffmpeg) = ffmpeg() else {
+        return;
+    };
+    let ffprobe = ffmpeg.with_file_name("ffprobe");
+    let dir = std::env::temp_dir().join(format!("small-video-speed-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // 6 s of a 440 Hz tone, with 3 s of silence (3–6 s) to cut as well.
+    let status = Command::new(&ffmpeg)
+        .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x200:rate=30:duration=9"])
+        .args(["-f", "lavfi", "-i", "aevalsrc='if(between(t,3,6),0,0.5*sin(2*PI*440*t))':s=48000:d=9"])
+        .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"])
+        .arg(dir.join(take::SCREEN))
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    for (speed, cut) in [(2.0, false), (1.5, true), (3.0, false)] {
+        let mut project = Project::new(9.0, 320, 200, &EventLog::default());
+        project.speed = speed;
+        if cut {
+            project.blanks = Some(Default::default());
+            project.cuts = vec![small_video_core::Cut { start: 3.25, end: 5.75, keep: false }];
+        }
+        project.save(&dir.join(take::PROJECT)).unwrap();
+        let expected = project.video_duration();
+
+        let out = dir.join(format!("out-{speed}.mp4"));
+        let progress = Progress::default();
+        export(&dir, &out, Settings { long_side: 320, fps: 30 }, &progress, &AtomicBool::new(false)).unwrap();
+        assert_eq!(progress.fraction(), 1.0, "{speed}×");
+        if ffprobe.is_file() {
+            let durations = probe(&ffprobe, &out, "stream=codec_type,duration");
+            assert_eq!(durations.lines().count(), 2, "{durations}");
+            for line in durations.lines() {
+                let secs: f64 = line.rsplit(',').next().unwrap().parse().unwrap();
+                assert!((secs - expected).abs() < 0.15, "{speed}× {line}: expected {expected:.2} s");
+            }
+            let frames: f64 = probe(&ffprobe, &out, "stream=nb_read_frames").lines().next().unwrap().parse().unwrap();
+            assert!((frames - expected * 30.0).abs() <= 2.0, "{speed}×: {frames} frames for {expected:.2} s");
+        }
+        // The sound is still there from the start (atempo keeps its pitch; this doesn't measure it).
+        let after = small_video_export::sound::loudness(&ffmpeg, &out).unwrap().unwrap();
+        let loud = after.db.iter().take((1.0 / speed / after.window) as usize).all(|d| *d > -20.0);
+        assert!(loud, "{speed}×: the tone's start is missing");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
