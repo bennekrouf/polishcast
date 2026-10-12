@@ -28,6 +28,10 @@ trash = "5.2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 # Leaving the app's own window out of screen recordings (SetWindowDisplayAffinity).
+# Free disk space, to stop a forgotten recording before the disk fills.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 

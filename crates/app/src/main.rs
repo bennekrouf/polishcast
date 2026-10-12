@@ -4,6 +4,7 @@
 mod area_picker;
 mod editor;
 mod licence;
+mod limits;
 mod media_server;
 mod platform;
 mod settings;

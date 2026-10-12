@@ -138,6 +138,10 @@ pub fn App() -> Element {
         (tx, Rc::new(rx))
     });
     let mut picking = use_signal(|| false);
+    // The folder of the take being recorded, to keep an eye on its size.
+    let mut recording_dir = use_signal(|| Option::<PathBuf>::None);
+    // Why the last recording was stopped for the user, until the next one starts.
+    let mut auto_stopped = use_signal(|| Option::<String>::None);
 
     let start = {
         let recorder = recorder.clone();
@@ -145,6 +149,8 @@ pub fn App() -> Element {
             Ok(dir) => {
                 error.set(None);
                 let options = Options { source, system_audio: settings.peek().system_audio, ..Options::default() };
+                recording_dir.set(Some(dir.clone()));
+                auto_stopped.set(None);
                 recorder.start(dir, options);
                 status.set(Status::Starting);
             }
@@ -214,7 +220,22 @@ pub fn App() -> Element {
             let (compacted_tx, compacted_rx) = (compacted_tx.clone(), compacted_rx.clone());
             let area_rx = area_rx.clone();
             async move {
+                let mut tick = 0u64;
                 loop {
+                    tick += 1;
+                    // A forgotten recording stops before it fills the disk (checked every 2 s).
+                    let current = *status.peek();
+                    if let (Status::Recording(since), true) = (current, tick.is_multiple_of(20)) {
+                        let dir = recording_dir.peek().clone();
+                        let size =
+                            dir.as_ref().and_then(|d| std::fs::metadata(d.join(take::SCREEN)).ok()).map(|m| m.len());
+                        let free = dir.as_deref().and_then(crate::limits::free_space);
+                        if let Some(reason) = crate::limits::reason_to_stop(since.elapsed(), size, free) {
+                            auto_stopped.set(Some(reason));
+                            recorder.stop();
+                            status.set(Status::Saving);
+                        }
+                    }
                     while let Ok(area) = area_rx.try_recv() {
                         picking.set(false);
                         if let Some(area) = area {
@@ -352,6 +373,9 @@ pub fn App() -> Element {
                 }
                 if let Some(e) = error() {
                     p { class: "error", "{e}" }
+                }
+                if let Some(reason) = auto_stopped() {
+                    p { class: "error", "{reason}" }
                 }
                 if let Some(n) = notice() {
                     p { class: "hint", "{n}" }

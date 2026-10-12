@@ -52,6 +52,9 @@ loss on text (40 already smears it). The file is only replaced if the result is 
 take is usable meanwhile, and its size shows in the list. On Windows the encoder takes a
 bitrate, so recordings are written small and not compacted.
 
+A recording stops by itself after 2 hours, at 20 GB, or when the disk has less than 2 GB free
+(`app/src/limits.rs`, checked every 2 s), so a forgotten one can't fill the disk.
+
 The cursor is left out of the recording on purpose: it's redrawn from `events.json`, smoothed
 and scaled, and the camera follows it. A ring spreads from it at each click, and it fades out
 after 1.5 s at rest and back in just before it moves (`core/src/cursor.rs`; both are style
