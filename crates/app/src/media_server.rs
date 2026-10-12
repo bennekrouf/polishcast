@@ -59,6 +59,16 @@ pub fn publish(path: &Path) -> Option<String> {
     Some(format!("http://127.0.0.1:{}/{token}.{name}", server.port))
 }
 
+/// Serve `path` as well as what's already published (a background picture next to the video)
+/// and return its URL. Gone with the next `publish`.
+pub fn share(path: &Path) -> Option<String> {
+    let server = server()?;
+    let token = random_token();
+    server.files.lock().unwrap().insert(token.clone(), path.to_owned());
+    let name = path.extension().and_then(|e| e.to_str()).unwrap_or("bin");
+    Some(format!("http://127.0.0.1:{}/{token}.{name}", server.port))
+}
+
 /// Stop serving what `publish` returned `url` for (e.g. when another file is selected).
 pub fn unpublish(url: &str) {
     if let Some(server) = server() {
@@ -129,6 +139,8 @@ fn content_type(path: &Path) -> &'static str {
     // Chromium (WebView2) won't try "video/quicktime", but plays most MOVs as MP4.
     match ext.as_str() {
         "mov" if cfg!(target_os = "macos") => "video/quicktime",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
         _ => "video/mp4",
     }
 }

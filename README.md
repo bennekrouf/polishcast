@@ -1,7 +1,8 @@
 # Small Video
 
-Record your screen from the menu bar, get a polished video: smooth cursor, automatic zoom on
-clicks, background, padding and rounded corners. Rust + Dioxus desktop, macOS 15+ and
+Record your screen, a window or an area from the menu bar, get a polished video: smooth
+cursor with a ring on clicks, automatic zoom on clicks, background (colour, gradient or your
+own picture), padding and rounded corners. Export as MP4 or GIF. Rust + Dioxus desktop, macOS 15+ and
 Windows 10 2004+ (Windows not yet run on a real machine; see Platforms).
 
 Built on the same layout as Splitter: a pure model crate, a platform crate behind a command
@@ -39,9 +40,10 @@ Each take is a folder in `~/Movies/Small Video/<date time>/`:
 
 | File | What |
 |---|---|
-| `screen.mov` | The display the pointer was on, H.264, **cursor hidden**, with the microphone |
+| `screen.mov` | The display the pointer was on (or the window, or the area chosen), H.264, **cursor hidden**, with the microphone (and the Mac's sound, if chosen: a second track, mixed at export) |
 | `events.json` | Pointer positions and clicks, normalized to the display, seconds from the first frame |
-| `project.json` | Edits: zooms (suggested from clicks), style, aspect |
+| `project.json` | Edits: zooms (suggested from clicks), splits and removed clips, style, aspect |
+| `background-*.png/jpg` | A background picture, copied in when chosen (a new name each time, so undo works) |
 
 Right after a take, `screen.mov` is **compacted** in the background: ScreenCaptureKit writes
 at a fixed, high bitrate (100–500 MB a minute on a Retina display), so the app re-encodes it
@@ -51,7 +53,18 @@ take is usable meanwhile, and its size shows in the list. On Windows the encoder
 bitrate, so recordings are written small and not compacted.
 
 The cursor is left out of the recording on purpose: it's redrawn from `events.json`, smoothed
-and scaled, and the camera follows it. Small Video's own windows are excluded from the capture.
+and scaled, and the camera follows it. A ring spreads from it at each click, and it fades out
+after 1.5 s at rest and back in just before it moves (`core/src/cursor.rs`; both are style
+settings). Small Video's own windows are excluded from the capture.
+
+### What to record
+
+**Screen**, **Window** or **Area** under Record (macOS; remembered in `settings.json` in the
+app's data folder, with the system sound setting). A window is recorded with ScreenCaptureKit's
+single-window filter, so covering it doesn't matter; pointer positions are normalized to where
+it was when recording started, so moving it while recording puts the redrawn cursor off. An area
+is picked in a see-through window over the display the pointer is on (`area_picker.rs`) and
+recorded as that display with a source rectangle.
 
 ### Editor
 
@@ -62,6 +75,9 @@ the video plays, so the preview has no layout math of its own and matches the ex
 
 - **Space** plays/pauses, **←/→** step 1 s (**⇧** 5 s), click or drag the timeline to seek
 - **Z** or **+ Zoom** adds a zoom at the playhead, centered on the cursor
+- **S** or **Split** splits at the playhead; click a clip in the strip under the zooms to remove
+  it or put it back (**⌫**). **[** / **]** leave out everything before / after the playhead.
+  Removed clips go on the same timeline as cut blanks, so preview, export and sound follow.
 - Click a zoom to edit its start, end, zoom and focus; **⌫** deletes it, **Esc** deselects
 - **⌘Z / ⌘⇧Z** undo and redo; every change is saved to `project.json`
 
@@ -82,7 +98,10 @@ the settings.
 ### Export
 
 **Export MP4** in the editor writes `<take name>.mp4` next to the take's folder, at 1080p,
-1440p or 4K (along the longer side, in the chosen frame), 30 or 60 fps. ffmpeg decodes the
+1440p or 4K (along the longer side, in the chosen frame), 30 or 60 fps. **GIF** writes
+`<take name>.gif` at 640–1280 px and 10–24 fps, without sound, looping: one palette for the
+whole video (`palettegen` on what changes between frames) and only each frame's changed
+rectangle stored. ffmpeg decodes the
 recording, each output frame is drawn from the same `Scene::frame` as the preview, and ffmpeg
 encodes them with VideoToolbox (hardware H.264, ~0.1 bit per pixel) and the recording's sound
 as AAC. 12 s of 1080p60 takes about 10 s on an M-series Mac (release build).
@@ -105,6 +124,8 @@ Pointer position and clicks are polled, which needs no Accessibility permission.
 | Cursor hidden, pointer logged | ✓ | ✓ (`GetCursorPos`, physical pixels) | — |
 | App's windows left out | capture filter | `WDA_EXCLUDEFROMCAPTURE` | — |
 | Microphone | in the capture | cpal, muxed by the encoder | — |
+| Mac's sound | in the capture (setting) | — | — |
+| Window, area | ✓ | — (screen only) | — |
 | Shortcut | ⌘⇧2 | Ctrl+Shift+2 | Ctrl+Shift+2 |
 | Tray icon | template image | colour icon | colour icon |
 | Export, ffmpeg | VideoToolbox; ffmpeg fetched on first use | libx264; ffmpeg fetched on first use | same |
@@ -171,11 +192,13 @@ end; they pass without checking anything when ffmpeg isn't installed.
 ## Roadmap
 
 1. ~~Record: menu bar Record/Stop, events log, take folder~~
-2. ~~Editor: preview, timeline, zoom editing, style panel, undo~~; next: trim/cuts, drag
-   zoom edges on the timeline, click the preview to set a zoom's focus
-3. ~~Export: compositor, VideoToolbox encode, 1080p/1440p/4K, 30/60 fps~~; next: faster
-   (compose frames in parallel, or on the GPU), GIF, fetch ffmpeg on first use like Splitter
-4. Webcam bubble, system audio toggle, captions, window/area capture, keystroke overlay
+2. ~~Editor: preview, timeline, zoom editing, style panel, undo, split and remove clips,
+   picture backgrounds, click rings, idle cursor~~; next: drag zoom edges on the timeline,
+   click the preview to set a zoom's focus
+3. ~~Export: compositor, VideoToolbox encode, 1080p/1440p/4K, 30/60 fps, GIF~~; next: faster
+   (compose frames in parallel, or on the GPU)
+4. ~~System audio toggle, window/area capture (macOS)~~; next: webcam bubble, captions,
+   keystroke overlay, window/area capture on Windows
 
 ## Licence
 

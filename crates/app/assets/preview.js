@@ -2,13 +2,13 @@
 // looks them up as the video plays: no layout math lives here, so the preview shows what the
 // export will render.
 //
-// Elements (from editor.rs): #sv-stage, #sv-content, #sv-video, #sv-cursor, #sv-timeline,
-// #sv-playhead, #sv-time. Rust never sets the style properties this script owns.
+// Elements (from editor.rs): #sv-stage, #sv-content, #sv-video, #sv-cursor, #sv-ripple,
+// #sv-timeline, #sv-playhead, #sv-time. Rust never sets the style properties this script owns.
 //
 // Messages to Rust, through `sv.send`: {kind: "tick", t, playing} and {kind: "key", key, cmd, shift}.
 (() => {
   if (window.sv) return;
-  const STRIDE = 6;
+  const STRIDE = 11;
   const pct = (v, of) => `${(v / of) * 100}%`;
   const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
@@ -101,6 +101,7 @@
         const k = Math.min(f - i, 1);
         const at = (n) => t.frames[i * STRIDE + n] + (t.frames[j * STRIDE + n] - t.frames[i * STRIDE + n]) * k;
 
+        const stage = document.getElementById("sv-stage");
         const size = at(2);
         v.style.transform = `scale(${1 / size}) translate(${-at(0) * 100}%, ${-at(1) * 100}%)`;
 
@@ -113,6 +114,29 @@
             cursor.style.left = pct(at(3), t.width);
             cursor.style.top = pct(at(4), t.height);
             cursor.style.height = pct(at(5), t.height);
+            cursor.style.opacity = at(6);
+          }
+        }
+
+        const ripple = document.getElementById("sv-ripple");
+        if (ripple) {
+          // A ring starts and ends between frames: take the one frame that has it rather than
+          // sliding it in from nowhere.
+          const a = t.frames[i * STRIDE + 10];
+          const b = t.frames[j * STRIDE + 10];
+          const n = a > 0 && b > 0 ? null : a > 0 ? i : b > 0 ? j : -1;
+          const get = (m) => (n === null ? at(m) : t.frames[n * STRIDE + m]);
+          if (n === -1) {
+            ripple.style.display = "none";
+          } else {
+            const r = get(9);
+            ripple.style.display = "block";
+            ripple.style.left = pct(get(7) - r, t.width);
+            ripple.style.top = pct(get(8) - r, t.height);
+            ripple.style.width = pct(2 * r, t.width);
+            ripple.style.height = pct(2 * r, t.height);
+            ripple.style.borderWidth = `${r * t.ripple_stroke * (stage ? stage.clientWidth / t.width : 1)}px`;
+            ripple.style.opacity = get(10);
           }
         }
 
@@ -139,9 +163,9 @@
     },
   });
 
-  // Click or drag on the timeline (outside a zoom) to seek.
+  // Click or drag on the timeline (outside a zoom, cut or clip) to seek.
   document.addEventListener("pointerdown", (e) => {
-    if (!e.target.closest("#sv-timeline") || e.target.closest(".zoom, .cut")) return;
+    if (!e.target.closest("#sv-timeline") || e.target.closest(".zoom, .cut, .clip")) return;
     sv.scrubbing = true;
     sv.scrub(e);
   });

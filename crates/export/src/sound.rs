@@ -16,22 +16,48 @@ const RATE: u32 = 16_000;
 /// the picture, and the gap is filled with silence so times line up with the video.
 const ALIGN: &str = "aresample=async=1:first_pts=0";
 
-/// Whether `file` has a sound track.
-pub fn has_audio(ffmpeg: &Path, file: &Path) -> Result<bool> {
+/// How many sound tracks `file` has: none, one (the microphone, or the Mac's sound), or more
+/// when both were recorded.
+pub fn audio_tracks(ffmpeg: &Path, file: &Path) -> Result<usize> {
     let out = tools::command(ffmpeg).args(["-hide_banner", "-nostdin", "-i"]).arg(file).output()?;
     // ffmpeg describes the input on stderr (and complains that no output was given).
-    Ok(String::from_utf8_lossy(&out.stderr).lines().any(|l| l.contains("Stream #") && l.contains("Audio:")))
+    Ok(String::from_utf8_lossy(&out.stderr).lines().filter(|l| l.contains("Stream #") && l.contains("Audio:")).count())
+}
+
+/// Whether `file` has a sound track.
+pub fn has_audio(ffmpeg: &Path, file: &Path) -> Result<bool> {
+    Ok(audio_tracks(ffmpeg, file)? > 0)
+}
+
+/// The start of a filter chain: input `input`'s sound, its `tracks` tracks aligned and mixed
+/// into one. Further filters follow after a comma.
+fn source(input: u8, tracks: usize) -> String {
+    if tracks <= 1 {
+        return format!("[{input}:a:0]{ALIGN}");
+    }
+    let mut graph = String::new();
+    for i in 0..tracks {
+        graph += &format!("[{input}:a:{i}]{ALIGN}[m{i}];");
+    }
+    for i in 0..tracks {
+        graph += &format!("[m{i}]");
+    }
+    // normalize=0: each track at its own level, not each halved.
+    graph + &format!("amix=inputs={tracks}:duration=longest:normalize=0")
 }
 
 /// The loudness of `file`'s sound in 50 ms windows; `None` if it has no sound.
 pub fn loudness(ffmpeg: &Path, file: &Path) -> Result<Option<Loudness>> {
-    if !has_audio(ffmpeg, file)? {
+    let tracks = audio_tracks(ffmpeg, file)?;
+    if tracks == 0 {
         return Ok(None);
     }
+    let graph = format!("{}[out]", source(0, tracks));
     let mut child = tools::command(ffmpeg)
         .args(["-v", "error", "-nostdin", "-i"])
         .arg(file)
-        .args(["-map", "0:a:0", "-af", ALIGN, "-ac", "1", "-ar", &RATE.to_string(), "-f", "f32le", "-"])
+        .args(["-filter_complex", &graph, "-map", "[out]"])
+        .args(["-ac", "1", "-ar", &RATE.to_string(), "-f", "f32le", "-"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -74,16 +100,18 @@ pub fn atempo(speed: f64) -> String {
     steps.join(",")
 }
 
-/// The filter graph for the sound, taking input 1's and producing `[aout]`: the timeline's
-/// parts when blanks are cut, sped up when `speed` isn't 1. `None` when the sound is used as is.
-pub fn filter(timeline: &Timeline, cutting: bool, speed: f64) -> Option<String> {
+/// The filter graph for the sound, taking input 1's `tracks` tracks and producing `[aout]`:
+/// mixed into one, the timeline's parts when anything is cut, sped up when `speed` isn't 1.
+/// `None` when the one track is used as is.
+pub fn filter(timeline: &Timeline, cutting: bool, speed: f64, tracks: usize) -> Option<String> {
     let fast = (speed - 1.0).abs() > 1e-9;
     match (cutting, fast) {
-        (false, false) => None,
-        (true, false) => Some(cut_filter(timeline)),
-        (false, true) => Some(format!("[1:a]{ALIGN},{}[aout]", atempo(speed))),
+        (false, false) if tracks <= 1 => None,
+        (false, false) => Some(format!("{}[aout]", source(1, tracks))),
+        (true, false) => Some(cut_filter(timeline, tracks)),
+        (false, true) => Some(format!("{},{}[aout]", source(1, tracks), atempo(speed))),
         (true, true) => {
-            let cut = cut_filter(timeline);
+            let cut = cut_filter(timeline, tracks);
             let cut = cut.strip_suffix("[aout]").unwrap_or(&cut);
             Some(format!("{cut}[acut];[acut]{}[aout]", atempo(speed)))
         }
@@ -93,11 +121,11 @@ pub fn filter(timeline: &Timeline, cutting: bool, speed: f64) -> Option<String> 
 /// Seconds faded out and in at each cut, so a cut never clicks.
 const FADE_SECS: f64 = 0.01;
 
-/// An ffmpeg filter graph taking input 1's sound and producing `[aout]`: only the timeline's
-/// parts, joined, each faded in and out over a few milliseconds.
-pub fn cut_filter(timeline: &Timeline) -> String {
+/// An ffmpeg filter graph taking input 1's sound (its `tracks` tracks mixed) and producing
+/// `[aout]`: only the timeline's parts, joined, each faded in and out over a few milliseconds.
+pub fn cut_filter(timeline: &Timeline, tracks: usize) -> String {
     let n = timeline.parts.len();
-    let mut graph = format!("[1:a]{ALIGN},asplit={n}");
+    let mut graph = format!("{},asplit={n}", source(1, tracks));
     for i in 0..n {
         graph += &format!("[s{i}]");
     }
@@ -126,17 +154,27 @@ mod tests {
         assert_eq!(atempo(2.0), "atempo=2.000000");
         assert_eq!(atempo(3.0), "atempo=2,atempo=1.500000");
         let tl = Timeline { parts: vec![(0.0, 10.0)] };
-        assert_eq!(filter(&tl, false, 1.0), None);
-        assert_eq!(filter(&tl, false, 2.0).unwrap(), "[1:a]aresample=async=1:first_pts=0,atempo=2.000000[aout]");
-        let both = filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, true, 1.25).unwrap();
+        assert_eq!(filter(&tl, false, 1.0, 1), None);
+        assert_eq!(filter(&tl, false, 2.0, 1).unwrap(), "[1:a:0]aresample=async=1:first_pts=0,atempo=2.000000[aout]");
+        let both = filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, true, 1.25, 1).unwrap();
         assert!(both.contains("concat=n=2:v=0:a=1[acut];[acut]atempo=1.250000[aout]"), "{both}");
+    }
+
+    #[test]
+    fn the_microphone_and_the_macs_sound_are_mixed() {
+        let tl = Timeline { parts: vec![(0.0, 10.0)] };
+        let mixed = "[1:a:0]aresample=async=1:first_pts=0[m0];[1:a:1]aresample=async=1:first_pts=0[m1];\
+                     [m0][m1]amix=inputs=2:duration=longest:normalize=0";
+        assert_eq!(filter(&tl, false, 1.0, 2).unwrap(), format!("{mixed}[aout]"));
+        let cut = cut_filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, 2);
+        assert!(cut.starts_with(&format!("{mixed},asplit=2[s0][s1];")), "{cut}");
     }
 
     #[test]
     fn the_filter_keeps_each_part() {
         let tl = Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] };
-        let f = cut_filter(&tl);
-        assert!(f.starts_with("[1:a]aresample=async=1:first_pts=0,asplit=2[s0][s1];"));
+        let f = cut_filter(&tl, 1);
+        assert!(f.starts_with("[1:a:0]aresample=async=1:first_pts=0,asplit=2[s0][s1];"));
         assert!(f.contains("[s0]atrim=start=1.000000:end=4.000000,asetpts=PTS-STARTPTS"));
         assert!(f.contains("afade=t=out:st=2.990000:d=0.010000[a0]"));
         assert!(f.ends_with("[a0][a1]concat=n=2:v=0:a=1[aout]"));

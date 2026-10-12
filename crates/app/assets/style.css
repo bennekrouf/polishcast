@@ -50,7 +50,37 @@ button.link { background: none; border: none; color: var(--muted); padding: 0 4p
   overflow-y: auto;
 }
 .sidebar header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.sidebar[hidden] { display: none; }
+.header-actions { display: flex; align-items: center; gap: 6px; }
+.rail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 6px;
+  border-right: 1px solid var(--line);
+}
+button.panel-toggle { padding: 2px 8px; color: var(--muted); font-size: 15px; line-height: 1.2; }
+button.panel-toggle:hover { color: var(--text); }
+button.record.compact { padding: 4px 8px; font-size: 11px; }
 .main { flex: 1; min-width: 0; display: flex; }
+
+/* What the next recording takes in */
+.record-settings { margin: 10px 0 4px; }
+.record-settings .segmented { margin-bottom: 8px; }
+.record-settings .check { margin-bottom: 6px; }
+.window-choice { display: flex; gap: 6px; margin-bottom: 8px; }
+.window-choice select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 4px;
+}
 
 button.record { background: var(--accent); border-color: var(--accent); font-weight: 600; padding: 6px 16px; }
 button.record.on { animation: pulse 1.2s ease-in-out infinite; }
@@ -88,6 +118,16 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
   cursor: pointer;
 }
 .stage .cursor { position: absolute; display: none; pointer-events: none; overflow: visible; }
+/* A click's ring: white, edged in dark, as the export draws it (sized by the preview script). */
+.stage .ripple {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  box-sizing: border-box;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
 
 .transport { display: flex; align-items: center; gap: 8px; }
 .transport .play { width: 40px; }
@@ -96,7 +136,7 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
 
 .timeline {
   position: relative;
-  height: 44px;
+  height: 58px;
   background: var(--panel);
   border-radius: 6px;
   overflow: hidden;
@@ -104,8 +144,8 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
 }
 .timeline .zoom {
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  top: 6px;
+  bottom: 24px;
   min-width: 4px;
   background: color-mix(in srgb, var(--zoom) 55%, transparent);
   border: 1px solid var(--zoom);
@@ -113,6 +153,7 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
   font-size: 11px;
   padding: 0 6px;
   line-height: 26px;
+  box-sizing: border-box;
   overflow: hidden;
   white-space: nowrap;
   cursor: pointer;
@@ -150,6 +191,19 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
 .swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .swatch { width: 28px; height: 28px; padding: 0; border-radius: 6px; }
 .swatch.on { outline: 2px solid #fff; outline-offset: 1px; }
+/* Your own picture: a "+" until one is chosen, then the picture itself */
+.swatch.picture {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  cursor: pointer;
+  background-size: cover;
+}
+.swatch.picture.on { border-style: solid; }
+.swatch.picture input { display: none; }
 
 .buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 
@@ -286,3 +340,22 @@ button kbd { margin-left: 6px; }
   border-radius: 6px;
   padding: 2px 4px;
 }
+
+/* Clips cut by hand: a lane under the zooms, split where the user split */
+.timeline .clips { position: absolute; left: 0; right: 0; bottom: 4px; height: 14px; }
+.timeline .clip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  background: rgba(161, 161, 170, 0.28);
+  border-left: 2px solid var(--panel);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.timeline .clip:first-child { border-left: none; }
+.timeline .clip:hover { background: rgba(161, 161, 170, 0.45); }
+.timeline .clip.removed {
+  background: repeating-linear-gradient(135deg, rgba(239, 68, 68, 0.5) 0 4px, rgba(239, 68, 68, 0.15) 4px 8px);
+}
+.timeline .clip.selected { outline: 2px solid #c7d2fe; outline-offset: -1px; }

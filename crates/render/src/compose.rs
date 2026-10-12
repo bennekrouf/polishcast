@@ -6,9 +6,25 @@
 use crate::{Frame, Scene};
 use small_video_core::project::Background;
 use tiny_skia::{
-    Color, FillRule, FilterQuality, GradientStop, LinearGradient, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint,
-    PixmapRef, Point, SpreadMode, Stroke, Transform,
+    Color, FillRule, FilterQuality, GradientStop, IntSize, LinearGradient, Mask, Paint, Path, PathBuilder, Pixmap,
+    PixmapPaint, PixmapRef, Point, SpreadMode, Stroke, Transform,
 };
+
+/// A background picture, decoded for drawing. PNG or JPEG.
+pub fn load_image(path: &std::path::Path) -> Result<Pixmap, String> {
+    let img = image::open(path).map_err(|e| e.to_string())?.into_rgba8();
+    let (w, h) = img.dimensions();
+    let mut data = img.into_raw();
+    // tiny-skia wants premultiplied alpha.
+    for px in data.as_chunks_mut::<4>().0 {
+        let a = px[3] as u16;
+        for v in &mut px[..3] {
+            *v = ((*v as u16 * a + 127) / 255) as u8;
+        }
+    }
+    let size = IntSize::from_wh(w, h).ok_or("The picture is empty")?;
+    Pixmap::from_vec(data, size).ok_or_else(|| "The picture can't be drawn".to_string())
+}
 
 /// The pointer's outline, tip near (1, 1), in a 20 × 28 box. The preview draws the same shape.
 pub const CURSOR_POINTS: [(f32, f32); 7] =
@@ -16,6 +32,8 @@ pub const CURSOR_POINTS: [(f32, f32); 7] =
 /// Height of the box `CURSOR_POINTS` is drawn in; a cursor's `size` maps to it.
 pub const CURSOR_BOX: f32 = 28.0;
 pub const CURSOR_STROKE: f32 = 1.6;
+/// A click ring's line width, as a fraction of its radius. The preview draws the same.
+pub const RIPPLE_STROKE: f32 = 0.14;
 
 /// The cursor outline as an SVG path, for the preview.
 pub fn cursor_svg_path() -> String {
@@ -37,6 +55,12 @@ impl Compositor {
     /// For frames of `width` × `height`. Layout that doesn't change over time is taken from the
     /// scene's first frame.
     pub fn new(scene: &Scene, width: u32, height: u32) -> Self {
+        Self::with_image(scene, width, height, None)
+    }
+
+    /// Like `new`, with the picture a `Background::Image` names (from `load_image`). Without
+    /// one, such a background is drawn dark.
+    pub fn with_image(scene: &Scene, width: u32, height: u32, image: Option<PixmapRef>) -> Self {
         let first = scene.frame(0.0, width, height);
         let c = first.content;
         let content_path = rounded_rect(c.x, c.y, c.w, c.h, first.radius);
@@ -53,6 +77,7 @@ impl Compositor {
                 Transform::identity(),
             )
             .expect("two stops"),
+            Background::Image(_) => tiny_skia::Shader::SolidColor(parse_color("#18181b")),
         };
         backdrop.fill_rect(
             tiny_skia::Rect::from_xywh(0.0, 0.0, width as f32, height as f32).expect("frame size"),
@@ -60,6 +85,14 @@ impl Compositor {
             Transform::identity(),
             None,
         );
+        if let (Background::Image(_), Some(img)) = (&scene.project.style.background, image) {
+            // Cover the frame, centred: scaled until both sides fill it, the overflow cut off.
+            let (iw, ih) = (img.width() as f32, img.height() as f32);
+            let k = (width as f32 / iw).max(height as f32 / ih);
+            let at = Transform::from_row(k, 0.0, 0.0, k, (width as f32 - iw * k) / 2.0, (height as f32 - ih * k) / 2.0);
+            let paint = PixmapPaint { quality: FilterQuality::Bicubic, ..Default::default() };
+            backdrop.draw_pixmap(0, 0, img, &paint, at, None);
+        }
 
         let mut clip = Mask::new(width, height).expect("frame size");
         clip.fill_path(&content_path, FillRule::Winding, true, Transform::identity());
@@ -100,13 +133,32 @@ impl Compositor {
         let paint = PixmapPaint { quality: FilterQuality::Bilinear, ..Default::default() };
         out.draw_pixmap(0, 0, source, &paint, to_content, Some(&self.clip));
 
+        // The click's ring goes under the cursor: white, edged in dark so it reads on any screen.
+        if let Some(r) = frame.ripple {
+            if let Some(ring) = PathBuilder::from_circle(r.x, r.y, r.radius.max(0.5)) {
+                let width = (r.radius * RIPPLE_STROKE).max(1.0);
+                let mut paint = Paint { anti_alias: true, ..Default::default() };
+                paint.set_color(Color::from_rgba(0.0, 0.0, 0.0, 0.35 * r.alpha).unwrap_or(Color::BLACK));
+                out.stroke_path(
+                    &ring,
+                    &paint,
+                    &Stroke { width: width + 2.0, ..Default::default() },
+                    Transform::identity(),
+                    None,
+                );
+                paint.set_color(Color::from_rgba(1.0, 1.0, 1.0, 0.9 * r.alpha).unwrap_or(Color::WHITE));
+                out.stroke_path(&ring, &paint, &Stroke { width, ..Default::default() }, Transform::identity(), None);
+            }
+        }
+
         if let Some(cur) = frame.cursor {
             let k = cur.size / CURSOR_BOX;
             let at = Transform::from_row(k, 0.0, 0.0, k, cur.x, cur.y);
+            let alpha = cur.opacity.clamp(0.0, 1.0);
             let mut paint = Paint { anti_alias: true, ..Default::default() };
-            paint.set_color(Color::BLACK);
+            paint.set_color(Color::from_rgba(0.0, 0.0, 0.0, alpha).unwrap_or(Color::BLACK));
             out.fill_path(&self.cursor, &paint, FillRule::Winding, at, None);
-            paint.set_color(Color::WHITE);
+            paint.set_color(Color::from_rgba(1.0, 1.0, 1.0, alpha).unwrap_or(Color::WHITE));
             let stroke = Stroke { width: CURSOR_STROKE, line_join: tiny_skia::LineJoin::Round, ..Default::default() };
             out.stroke_path(&self.cursor, &paint, &stroke, at, None);
         }
@@ -241,6 +293,27 @@ mod tests {
     }
 
     #[test]
+    fn a_click_draws_a_ring() {
+        let mut p = Project::new(1.0, 100, 50, &EventLog::default());
+        p.style.cursor_scale = 10.0;
+        p.style.background = Background::Color("#000000".into());
+        let events = EventLog {
+            cursor: vec![CursorSample { t: 0.0, x: 0.5, y: 0.5 }],
+            clicks: vec![small_video_core::Click { t: 0.0, x: 0.5, y: 0.5, button: small_video_core::Button::Left }],
+        };
+        let s = Scene::new(p, &events);
+        let comp = Compositor::new(&s, 200, 100);
+        let source = Pixmap::new(100, 50).unwrap();
+        let mut out = Pixmap::new(200, 100).unwrap();
+        let mut frame = s.frame(0.1, 200, 100);
+        frame.cursor = None;
+        let r = frame.ripple.unwrap();
+        comp.draw(&frame, source.as_ref(), &mut out);
+        // Left of the centre, on the ring: light on the black recording.
+        assert!(pixel(&out, (r.x - r.radius) as u32, r.y as u32)[0] > 100);
+    }
+
+    #[test]
     fn the_shadow_darkens_below_the_recording() {
         let (plain, shaded) = (scene(false), scene(true));
         let mut a = Pixmap::new(200, 120).unwrap();
@@ -250,6 +323,35 @@ mod tests {
         Compositor::new(&shaded, 200, 120).draw(&shaded.frame(0.0, 200, 120), source.as_ref(), &mut b);
         assert!(pixel(&b, 100, 106)[0] < pixel(&a, 100, 106)[0]);
         assert_eq!(pixel(&b, 2, 2), pixel(&a, 2, 2), "the far corner stays clear");
+    }
+
+    #[test]
+    fn a_picture_covers_the_frame_without_stretching() {
+        let mut p = Project::new(1.0, 100, 50, &EventLog::default());
+        p.style.padding = 0.2;
+        p.style.background = Background::Image("bg.png".into());
+        let s = Scene::new(p, &EventLog::default());
+        // A square picture, left half green, right half blue, over a 2:1 frame: scaled to the
+        // width, so its middle band shows, still split down the centre.
+        let mut img = Pixmap::new(10, 10).unwrap();
+        img.fill(Color::from_rgba8(0, 0, 255, 255));
+        img.fill_rect(
+            tiny_skia::Rect::from_xywh(0.0, 0.0, 5.0, 10.0).unwrap(),
+            &solid(0, 255, 0),
+            Transform::identity(),
+            None,
+        );
+        let comp = Compositor::with_image(&s, 200, 100, Some(img.as_ref()));
+        let mut out = Pixmap::new(200, 100).unwrap();
+        comp.draw(&s.frame(0.0, 200, 100), Pixmap::new(100, 50).unwrap().as_ref(), &mut out);
+        assert_eq!(pixel(&out, 3, 3)[1], 255, "green on the left");
+        assert_eq!(pixel(&out, 196, 96)[2], 255, "blue on the right");
+    }
+
+    fn solid(r: u8, g: u8, b: u8) -> Paint<'static> {
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(r, g, b, 255));
+        paint
     }
 
     #[test]

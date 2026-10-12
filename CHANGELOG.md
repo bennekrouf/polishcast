@@ -16,6 +16,34 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- Record one window or an area of the screen, not only the whole screen:
+  choose **Screen**, **Window** or **Area** under Record. A window is recorded
+  on its own even when others cover it; for an area, drag across the part to
+  record when you start (Esc cancels). macOS only for now.
+- **Record the Mac's sound too**, under Record, puts the sound apps play into
+  the take along with your voice. The setting and what to record are
+  remembered for next time.
+- A ring spreads from the cursor at each click, and the cursor fades out while
+  you leave the mouse alone, then back in just before it moves. Both are on for
+  new takes and can be turned off under **Style** (**Ring on clicks**, **Hide
+  the cursor when it rests**).
+- Cut by hand: **Split** (or S) splits the video at the playhead, and clicking a
+  clip in the strip under the zooms lets you remove it or put it back.
+  **[** leaves out everything before the playhead and **]** everything after,
+  to trim the start and end in one key. Undo brings everything back.
+- Your own picture as the background: the **+** swatch under **Style** takes a
+  PNG or JPEG. It fills the frame without being stretched, and is copied into
+  the take so moving or deleting the original doesn't affect it.
+- Export as an animated GIF: choose **GIF** in the export panel, at 640, 960 or
+  1280 px and 10, 15 or 24 fps. It has no sound and loops, for pasting into a
+  page, a ticket or a chat.
+- The recordings panel on the left can be closed with **‹** to give the editor
+  the whole window; a thin strip keeps Record and **›** to open it again.
+
 ## [0.1.5] - 2026-10-11
 
 ### Added

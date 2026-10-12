@@ -2,7 +2,7 @@
 //! ffmpeg isn't installed.
 
 use small_video_core::{take, Button, Click, CursorSample, EventLog, Project};
-use small_video_export::{export, ffmpeg, Progress, Settings};
+use small_video_export::{export, ffmpeg, Format, Progress, Settings};
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
@@ -46,7 +46,8 @@ fn exports_video_with_sound() {
 
     let out = dir.join("out.mp4");
     let progress = Progress::default();
-    export(&dir, &out, Settings { long_side: 640, fps: 30 }, &progress, &AtomicBool::new(false)).unwrap();
+    export(&dir, &out, Settings { format: Format::Mp4, long_side: 640, fps: 30 }, &progress, &AtomicBool::new(false))
+        .unwrap();
     assert_eq!(progress.fraction(), 1.0);
 
     if ffprobe.is_file() {
@@ -139,7 +140,14 @@ fn blanks_are_cut_from_picture_and_sound() {
     let expected = project.timeline().duration();
 
     let out = dir.join("out.mp4");
-    export(&dir, &out, Settings { long_side: 320, fps: 30 }, &Progress::default(), &AtomicBool::new(false)).unwrap();
+    export(
+        &dir,
+        &out,
+        Settings { format: Format::Mp4, long_side: 320, fps: 30 },
+        &Progress::default(),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     if ffprobe.is_file() {
         let durations = probe(&ffprobe, &out, "stream=codec_type,duration");
         for line in durations.lines() {
@@ -184,7 +192,14 @@ fn a_faster_speed_shortens_picture_and_sound() {
 
         let out = dir.join(format!("out-{speed}.mp4"));
         let progress = Progress::default();
-        export(&dir, &out, Settings { long_side: 320, fps: 30 }, &progress, &AtomicBool::new(false)).unwrap();
+        export(
+            &dir,
+            &out,
+            Settings { format: Format::Mp4, long_side: 320, fps: 30 },
+            &progress,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
         assert_eq!(progress.fraction(), 1.0, "{speed}×");
         if ffprobe.is_file() {
             let durations = probe(&ffprobe, &out, "stream=codec_type,duration");
@@ -200,6 +215,58 @@ fn a_faster_speed_shortens_picture_and_sound() {
         let after = small_video_export::sound::loudness(&ffmpeg, &out).unwrap().unwrap();
         let loud = after.db.iter().take((1.0 / speed / after.window) as usize).all(|d| *d > -20.0);
         assert!(loud, "{speed}×: the tone's start is missing");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn exports_a_looping_gif() {
+    let Some(ffmpeg) = ffmpeg() else {
+        return;
+    };
+    let ffprobe = ffmpeg.with_file_name("ffprobe");
+    let dir = std::env::temp_dir().join(format!("small-video-gif-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    make_take(&dir, &ffmpeg);
+    let out = dir.join("out.gif");
+    let settings = Settings { format: Format::Gif, long_side: 320, fps: 10 };
+    export(&dir, &out, settings, &Progress::default(), &AtomicBool::new(false)).unwrap();
+    if ffprobe.is_file() {
+        let video = probe(&ffprobe, &out, "stream=codec_name,width,height,nb_read_frames");
+        assert!(video.starts_with("gif,320,200,"), "{video}");
+        let frames: u32 = video.rsplit(',').next().unwrap().parse().unwrap();
+        assert!((19..=21).contains(&frames), "{frames} frames");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_picture_background_and_a_removed_clip_export() {
+    let Some(ffmpeg) = ffmpeg() else {
+        return;
+    };
+    let ffprobe = ffmpeg.with_file_name("ffprobe");
+    let dir = std::env::temp_dir().join(format!("small-video-picture-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    make_take(&dir, &ffmpeg);
+    let status = Command::new(&ffmpeg)
+        .args(["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=orange:size=64x48", "-frames:v", "1"])
+        .arg(dir.join("background.png"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let mut p = Project::load(&dir.join(take::PROJECT)).unwrap();
+    p.style.background = small_video_core::project::Background::Image("background.png".into());
+    p.splits = vec![1.0];
+    p.removed = vec![(1.0, 2.0)];
+    p.save(&dir.join(take::PROJECT)).unwrap();
+
+    let out = dir.join("out.mp4");
+    let settings = Settings { format: Format::Mp4, long_side: 640, fps: 30 };
+    export(&dir, &out, settings, &Progress::default(), &AtomicBool::new(false)).unwrap();
+    if ffprobe.is_file() {
+        let duration: f64 = probe(&ffprobe, &out, "format=duration").parse().unwrap();
+        assert!((duration - 1.0).abs() < 0.1, "the second half is left out: {duration} s");
     }
     std::fs::remove_dir_all(&dir).unwrap();
 }

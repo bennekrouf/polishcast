@@ -21,6 +21,12 @@ pub struct Project {
     pub blanks: Option<BlankParams>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cuts: Vec<Cut>,
+    /// Where the recording is split into clips by hand, in recording time, sorted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub splits: Vec<f64>,
+    /// Stretches removed by hand (whole clips), in recording time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub removed: Vec<(f64, f64)>,
     /// How much faster than recorded the video plays: 1.5 shows a minute of recording in 40
     /// seconds. The sound is sped up with it, at the same pitch.
     #[serde(default = "normal_speed", skip_serializing_if = "is_normal_speed")]
@@ -43,6 +49,9 @@ pub enum Background {
     Color(String),
     /// Top to bottom, CSS colors.
     Gradient(String, String),
+    /// A picture filling the frame (cropped to it, never stretched): the name of a file in the
+    /// take's folder, copied there when it was chosen so the take keeps working on its own.
+    Image(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -79,6 +88,12 @@ pub struct Style {
     pub cursor_scale: f32,
     /// Seconds the cursor path is averaged over (0 = drawn as recorded).
     pub cursor_smoothing: f64,
+    /// A ring spreads from the cursor at each click. Off in projects from before it existed.
+    #[serde(default)]
+    pub click_effect: bool,
+    /// The cursor fades out while the pointer rests. Off in projects from before it existed.
+    #[serde(default)]
+    pub hide_idle_cursor: bool,
 }
 
 impl Default for Style {
@@ -91,6 +106,8 @@ impl Default for Style {
             aspect: Aspect::Source,
             cursor_scale: 1.5,
             cursor_smoothing: 0.08,
+            click_effect: true,
+            hide_idle_cursor: true,
         }
     }
 }
@@ -106,6 +123,8 @@ impl Project {
             style: Style::default(),
             blanks: None,
             cuts: Vec::new(),
+            splits: Vec::new(),
+            removed: Vec::new(),
             speed: 1.0,
         }
     }
@@ -124,10 +143,13 @@ impl Project {
         self.timeline().duration() / self.speed()
     }
 
-    /// The video's timeline: the recording less the blanks cut, if blank cutting is on.
+    /// The video's timeline: the recording less the clips removed, and the blanks cut if blank
+    /// cutting is on.
     pub fn timeline(&self) -> Timeline {
-        let cuts: &[Cut] = if self.blanks.is_some() { &self.cuts } else { &[] };
-        Timeline::new(cuts, self.duration)
+        let blanks: &[Cut] = if self.blanks.is_some() { &self.cuts } else { &[] };
+        let removed = self.removed.iter().map(|&(start, end)| Cut { start, end, keep: false });
+        let cuts: Vec<Cut> = blanks.iter().copied().chain(removed).collect();
+        Timeline::new(&cuts, self.duration)
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {
@@ -153,6 +175,16 @@ mod tests {
         assert_eq!(p.video_duration(), 40.0);
         p.speed = f64::NAN;
         assert_eq!(p.speed(), 1.0);
+    }
+
+    #[test]
+    fn removed_clips_and_blanks_both_leave_the_video() {
+        let mut p = Project::new(20.0, 2880, 1800, &EventLog::default());
+        p.removed = vec![(0.0, 2.0)];
+        assert_eq!(p.video_duration(), 18.0, "removed clips count with blank cutting off");
+        p.cuts = vec![Cut { start: 1.0, end: 5.0, keep: false }, Cut { start: 10.0, end: 11.0, keep: true }];
+        p.blanks = Some(BlankParams::default());
+        assert_eq!(p.video_duration(), 15.0, "overlaps count once, kept cuts not at all");
     }
 
     #[test]

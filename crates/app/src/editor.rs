@@ -8,11 +8,12 @@ use dioxus::desktop::use_asset_handler;
 use dioxus::prelude::*;
 use serde::Deserialize;
 use small_video_core::blanks::redetect;
+use small_video_core::clips;
 use small_video_core::history::History;
 use small_video_core::project::{Aspect, Background, SPEEDS};
 use small_video_core::zoom::{self, Zoom};
 use small_video_core::{take, BlankParams, EventLog, Loudness, Project};
-use small_video_export::{Progress, Settings};
+use small_video_export::{Format, Progress, Settings};
 use small_video_render::{compose, Scene};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -143,6 +144,9 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
     });
     let mut playing = use_signal(|| false);
     let mut selected = use_signal(|| Option::<usize>::None);
+    // A clip picked on the timeline (start and end, in recording time); only one of a zoom and
+    // a clip is selected at a time.
+    let mut selected_clip = use_signal(|| Option::<(f64, f64)>::None);
 
     // Serve the recording to the web view (127.0.0.1, or the app's own protocol as a fallback).
     let url = use_hook(|| media_server::publish(&dir.join(take::SCREEN)));
@@ -154,6 +158,24 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
     });
     let mut in_app = use_signal(|| false);
     let mut failed = use_signal(|| false);
+    // The background picture, if any, served next to the video: its file name and URL.
+    let mut picture = use_signal(|| Option::<(String, String)>::None);
+    use_effect({
+        let dir = dir.clone();
+        move || {
+            let name = match &doc.project.read().style.background {
+                Background::Image(name) => Some(name.clone()),
+                _ => None,
+            };
+            let current = picture.peek().clone();
+            if current.as_ref().map(|c| &c.0) != name.as_ref() {
+                if let Some((_, url)) = current {
+                    media_server::unpublish(&url);
+                }
+                picture.set(name.and_then(|n| media_server::share(&dir.join(&n)).map(|url| (n, url))));
+            }
+        }
+    });
     use_asset_handler("media", move |request, responder| {
         std::thread::spawn(move || responder.respond(media_server::in_app_response(&request)));
     });
@@ -193,6 +215,29 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
         }
     });
 
+    // Splits the recording at the playhead.
+    let split_here = use_callback(move |()| {
+        let t = time();
+        let mut added = false;
+        doc.change(|p| added = clips::split(&mut p.splits, p.duration, t));
+        if !added {
+            let mut error = doc.error;
+            error.set(Some("Too close to the start, the end or another split to split here.".into()));
+        }
+    });
+    // Leaves out everything before the playhead (`before`), or everything after it.
+    let trim = use_callback(move |before: bool| {
+        let t = time();
+        doc.change(|p| {
+            clips::split(&mut p.splits, p.duration, t);
+            let stretch = if before { (0.0, t) } else { (t, p.duration) };
+            if stretch.1 - stretch.0 > 1e-6 {
+                clips::remove(&mut p.removed, stretch);
+            }
+        });
+        selected_clip.set(None);
+    });
+
     // Ticks and keys from the preview script.
     use_future(move || async move {
         let mut channel = document::eval("window.sv.send = (m) => dioxus.send(m); await new Promise(() => {});");
@@ -206,6 +251,9 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     ("z", true, false) => doc.undo(),
                     ("z" | "Z", true, true) => doc.redo(),
                     ("z", false, false) => add_zoom(()),
+                    ("s", false, false) => split_here(()),
+                    ("[", false, _) => trim(true),
+                    ("]", false, _) => trim(false),
                     ("Backspace" | "Delete", false, _) => {
                         if let Some(i) = selected.take() {
                             doc.change(|p| {
@@ -213,9 +261,14 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                                     p.zooms.remove(i);
                                 }
                             });
+                        } else if let Some(clip) = *selected_clip.peek() {
+                            doc.change(|p| toggle_clip(p, clip));
                         }
                     }
-                    ("Escape", false, _) => selected.set(None),
+                    ("Escape", false, _) => {
+                        selected.set(None);
+                        selected_clip.set(None);
+                    }
                     _ => {}
                 },
             }
@@ -226,12 +279,13 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
     let duration = project.duration.max(0.001);
     let video_duration = project.video_duration();
     let cutting = project.blanks.is_some();
-    let background = match &project.style.background {
-        Background::Color(c) => c.clone(),
-        Background::Gradient(a, b) => format!("linear-gradient(to bottom, {a}, {b})"),
-    };
+    let picture_url = picture().map(|(_, url)| if in_app() { media_server::in_app_path(&url) } else { url });
+    let background = css_background(&project.style.background, picture_url.as_deref());
     // A zoom removed by undo may leave the selection pointing past the end.
     let selection = selected().filter(|&i| i < project.zooms.len());
+    let all_clips = clips::clips(&project.splits, project.duration);
+    // Likewise a clip whose split was undone.
+    let clip_selection = selected_clip().filter(|c| all_clips.contains(c));
     let src = match &url {
         Some(url) if in_app() => media_server::in_app_path(url),
         Some(url) => url.clone(),
@@ -259,6 +313,8 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                                 onerror: move |_| if in_app() { failed.set(true) } else { in_app.set(true) },
                             }
                         }
+                        // Under the cursor, as the export draws it.
+                        div { id: "sv-ripple", class: "ripple" }
                         svg {
                             id: "sv-cursor",
                             class: "cursor",
@@ -302,6 +358,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                         }
                     }
                     span { class: "spacer" }
+                    button { onclick: move |_| split_here(()), title: "S — then click a clip to remove it", "Split" }
                     button { onclick: move |_| add_zoom(()), title: "Z", "+ Zoom" }
                     button { onclick: move |_| doc.undo(), title: "{platform::MOD}Z", "Undo" }
                     button { onclick: move |_| doc.redo(), title: "{platform::MOD}Shift+Z", "Redo" }
@@ -331,8 +388,30 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                             class: if selection == Some(i) { "zoom selected" } else { "zoom" },
                             left: "{z.start / duration * 100.0}%",
                             width: "{(z.end - z.start) / duration * 100.0}%",
-                            onclick: move |_| selected.set(Some(i)),
+                            onclick: move |_| {
+                                selected_clip.set(None);
+                                selected.set(Some(i));
+                            },
                             "{z.scale:.1}×"
+                        }
+                    }
+                    div { class: "clips",
+                        for &(start, end) in all_clips.iter() {
+                            div {
+                                key: "clip-{start}-{end}",
+                                class: {
+                                    let removed = if clips::is_removed(&project.removed, (start, end)) { " removed" } else { "" };
+                                    let on = if clip_selection == Some((start, end)) { " selected" } else { "" };
+                                    format!("clip{removed}{on}")
+                                },
+                                left: "{start / duration * 100.0}%",
+                                width: "{(end - start) / duration * 100.0}%",
+                                title: "Click to select this clip; S splits at the playhead",
+                                onclick: move |_| {
+                                    selected.set(None);
+                                    selected_clip.set(Some((start, end)));
+                                },
+                            }
                         }
                     }
                     div { id: "sv-playhead", class: "playhead" }
@@ -344,14 +423,38 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
             aside { class: "inspector",
                 if let Some(i) = selection {
                     ZoomPanel { doc, index: i, selected }
+                } else if let Some(clip) = clip_selection {
+                    ClipPanel { doc, clip, selected_clip }
                 } else {
-                    StylePanel { doc }
+                    StylePanel { doc, dir: dir.clone(), picture_url: picture_url.clone() }
                 }
                 BlanksPanel { doc, dir: dir.clone(), loudness }
                 ExportPanel { dir: dir.clone() }
             }
         }
     }
+}
+
+/// A background as CSS. A picture covers the frame, centred, as the export draws it.
+fn css_background(b: &Background, picture_url: Option<&str>) -> String {
+    match b {
+        Background::Color(c) => c.clone(),
+        Background::Gradient(a, b) => format!("linear-gradient(to bottom, {a}, {b})"),
+        Background::Image(_) => match picture_url {
+            Some(url) => format!("url(\"{url}\") center / cover no-repeat, #18181b"),
+            None => "#18181b".into(),
+        },
+    }
+}
+
+/// Copies a picture chosen as the background into the take's folder, under a new name each
+/// time (so undo brings back the picture that was there), and returns that name.
+fn adopt_picture(dir: &std::path::Path, from: &std::path::Path) -> std::io::Result<String> {
+    let ext = from.extension().and_then(|e| e.to_str()).unwrap_or("png").to_ascii_lowercase();
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+    let name = format!("background-{stamp}.{ext}");
+    std::fs::copy(from, dir.join(&name))?;
+    Ok(name)
 }
 
 fn clock(secs: f64) -> String {
@@ -396,9 +499,10 @@ fn Slider(
 }
 
 #[component]
-fn StylePanel(doc: Doc) -> Element {
+fn StylePanel(doc: Doc, dir: PathBuf, picture_url: Option<String>) -> Element {
     let p = doc.project.read();
     let s = &p.style;
+    let has_picture = matches!(s.background, Background::Image(_));
     rsx! {
         h2 { "Style" }
         div { class: "field",
@@ -428,6 +532,27 @@ fn StylePanel(doc: Doc) -> Element {
                         class: if s.background == Background::Color(c.into()) { "swatch on" } else { "swatch" },
                         background: "{c}",
                         onclick: move |_| doc.change(|p| p.style.background = Background::Color(c.into())),
+                    }
+                }
+                // A picture of your own: the swatch shows it once chosen.
+                label {
+                    class: if has_picture { "swatch picture on" } else { "swatch picture" },
+                    title: "A picture of your own (PNG or JPEG)",
+                    background: if has_picture { css_background(&s.background, picture_url.as_deref()) } else { String::new() },
+                    if !has_picture { "+" }
+                    input {
+                        r#type: "file",
+                        accept: "image/png,image/jpeg",
+                        onchange: move |e| {
+                            let Some(file) = e.files().into_iter().next() else { return };
+                            match adopt_picture(&dir, &file.path()) {
+                                Ok(name) => doc.change(|p| p.style.background = Background::Image(name)),
+                                Err(err) => {
+                                    let mut error = doc.error;
+                                    error.set(Some(format!("Can't use that picture: {err}")));
+                                }
+                            }
+                        },
                     }
                 }
             }
@@ -482,8 +607,24 @@ fn StylePanel(doc: Doc) -> Element {
             }
             "Shadow"
         }
+        label { class: "check",
+            input {
+                r#type: "checkbox",
+                checked: s.click_effect,
+                onchange: move |e| doc.change(|p| p.style.click_effect = e.checked()),
+            }
+            "Ring on clicks"
+        }
+        label { class: "check",
+            input {
+                r#type: "checkbox",
+                checked: s.hide_idle_cursor,
+                onchange: move |e| doc.change(|p| p.style.hide_idle_cursor = e.checked()),
+            }
+            "Hide the cursor when it rests"
+        }
         p { class: "hint",
-            "Click a zoom on the timeline to edit it. Z adds one at the playhead; Space plays; ←/→ step."
+            "Click a zoom on the timeline to edit it. Z adds one at the playhead, S splits there and [ or ] trims before or after it; Space plays; ←/→ step."
         }
     }
 }
@@ -570,20 +711,65 @@ fn ZoomPanel(doc: Doc, index: usize, selected: Signal<Option<usize>>) -> Element
     }
 }
 
+/// Removes a clip from the video, or puts it back.
+fn toggle_clip(p: &mut Project, clip: (f64, f64)) {
+    if clips::is_removed(&p.removed, clip) {
+        clips::restore(&mut p.removed, clip);
+    } else {
+        clips::remove(&mut p.removed, clip);
+    }
+}
+
+#[component]
+fn ClipPanel(doc: Doc, clip: (f64, f64), selected_clip: Signal<Option<(f64, f64)>>) -> Element {
+    let p = doc.project.read();
+    let (start, end) = clip;
+    let removed = clips::is_removed(&p.removed, clip);
+    let number = clips::clips(&p.splits, p.duration).iter().position(|&c| c == clip).map_or(1, |i| i + 1);
+    rsx! {
+        h2 { "Clip {number}" }
+        p { class: "hint",
+            "{clock(start)} – {clock(end)} · {end - start:.1} s"
+            if removed { " · left out of the video" }
+        }
+        div { class: "buttons",
+            button {
+                class: if removed { "primary" } else { "danger" },
+                title: "⌫",
+                onclick: move |_| doc.change(|p| toggle_clip(p, clip)),
+                if removed { "Put back" } else { "Remove" }
+            }
+            button {
+                onclick: move |_| {
+                    document::eval(&format!("window.sv.seek({start})"));
+                },
+                "Go to start"
+            }
+            button { onclick: move |_| selected_clip.set(None), "Done" }
+        }
+        p { class: "hint",
+            "S splits at the playhead. [ leaves out everything before it, ] everything after. Undo puts things back."
+        }
+    }
+}
+
 const RESOLUTIONS: &[(u32, &str)] = &[(1920, "1080p"), (2560, "1440p"), (3840, "4K")];
 const FRAME_RATES: &[u32] = &[30, 60];
+/// GIFs grow fast with size and frame rate; these keep them small enough to paste anywhere.
+const GIF_SIZES: &[(u32, &str)] = &[(640, "640 px"), (960, "960 px"), (1280, "1280 px")];
+const GIF_FRAME_RATES: &[u32] = &[10, 15, 24];
 
 enum Export {
     Idle,
-    Running { progress: Arc<Progress>, cancel: Arc<AtomicBool>, done: mpsc::Receiver<anyhow::Result<()>> },
+    Running { progress: Arc<Progress>, cancel: Arc<AtomicBool>, done: mpsc::Receiver<anyhow::Result<()>>, out: PathBuf },
     Done(PathBuf),
     Failed(String),
 }
 
 /// Where a take's export goes: next to its folder, named after it.
-fn export_path(dir: &std::path::Path) -> PathBuf {
+fn export_path(dir: &std::path::Path, format: Format) -> PathBuf {
     let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Small Video".into());
-    dir.with_file_name(format!("{name}.mp4"))
+    dir.with_file_name(format!("{name}.{}", format.extension()))
 }
 
 #[component]
@@ -593,34 +779,33 @@ fn ExportPanel(dir: PathBuf) -> Element {
     let mut fraction = use_signal(|| 0.0f32);
     // ffmpeg is being fetched before the first export.
     let mut downloading = use_signal(|| false);
-    let out = export_path(&dir);
     // The take's name: what the free version's exports are counted by.
     let take = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let pro = use_context::<crate::licence::Pro>();
 
     // Progress and the result, while an export runs.
     use_future({
-        let (out, take) = (out.clone(), take.clone());
+        let take = take.clone();
         move || {
-            let (out, take) = (out.clone(), take.clone());
+            let take = take.clone();
             async move {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                     let finished = match &*state.peek() {
-                        Export::Running { progress, done, .. } => {
+                        Export::Running { progress, done, out, .. } => {
                             fraction.set(progress.fraction());
                             downloading.set(progress.downloading());
-                            done.try_recv().ok()
+                            done.try_recv().ok().map(|r| (r, out.clone()))
                         }
                         _ => None,
                     };
                     match finished {
-                        Some(Ok(())) => {
+                        Some((Ok(()), out)) => {
                             pro.exported(&take);
-                            state.set(Export::Done(out.clone()));
+                            state.set(Export::Done(out));
                         }
-                        Some(Err(e)) if e.is::<small_video_export::Cancelled>() => state.set(Export::Idle),
-                        Some(Err(e)) => state.set(Export::Failed(format!("{e:#}"))),
+                        Some((Err(e), _)) if e.is::<small_video_export::Cancelled>() => state.set(Export::Idle),
+                        Some((Err(e), _)) => state.set(Export::Failed(format!("{e:#}"))),
                         None => {}
                     }
                 }
@@ -629,7 +814,7 @@ fn ExportPanel(dir: PathBuf) -> Element {
     });
 
     let start = {
-        let (dir, out, take) = (dir.clone(), out.clone(), take.clone());
+        let (dir, take) = (dir.clone(), take.clone());
         move |_| {
             // Without Pro, a take not exported before needs a free export left.
             if !pro.may_export(&take) {
@@ -639,23 +824,46 @@ fn ExportPanel(dir: PathBuf) -> Element {
             }
             let (progress, cancel) = (Arc::new(Progress::default()), Arc::new(AtomicBool::new(false)));
             let (tx, done) = mpsc::channel();
-            let (dir, out, settings) = (dir.clone(), out.clone(), settings());
-            let (p, c) = (progress.clone(), cancel.clone());
+            let settings = settings();
+            let (dir, out) = (dir.clone(), export_path(&dir, settings.format));
+            let (p, c, target) = (progress.clone(), cancel.clone(), out.clone());
             std::thread::spawn(move || {
-                let _ = tx.send(small_video_export::export(&dir, &out, settings, &p, &c));
+                let _ = tx.send(small_video_export::export(&dir, &target, settings, &p, &c));
             });
             fraction.set(0.0);
-            state.set(Export::Running { progress, cancel, done });
+            state.set(Export::Running { progress, cancel, done, out });
         }
     };
 
     let current = settings();
     let running = matches!(*state.read(), Export::Running { .. });
+    let gif = current.format == Format::Gif;
+    let (sizes, rates) = if gif { (GIF_SIZES, GIF_FRAME_RATES) } else { (RESOLUTIONS, FRAME_RATES) };
+    let kind = if gif { "GIF" } else { "MP4" };
     rsx! {
         div { class: "export",
             h2 { "Export" }
             div { class: "segmented",
-                for &(long_side, name) in RESOLUTIONS {
+                for (format, name) in [(Format::Mp4, "MP4"), (Format::Gif, "GIF")] {
+                    button {
+                        class: if current.format == format { "on" } else { "" },
+                        disabled: running,
+                        onclick: move |_| {
+                            if settings.peek().format != format {
+                                // Each format starts from its own sensible size and rate.
+                                settings.set(match format {
+                                    Format::Mp4 => Settings::default(),
+                                    Format::Gif => Settings { format, long_side: 960, fps: 15 },
+                                });
+                                state.set(Export::Idle);
+                            }
+                        },
+                        "{name}"
+                    }
+                }
+            }
+            div { class: "segmented",
+                for &(long_side, name) in sizes {
                     button {
                         class: if current.long_side == long_side { "on" } else { "" },
                         disabled: running,
@@ -665,7 +873,7 @@ fn ExportPanel(dir: PathBuf) -> Element {
                 }
             }
             div { class: "segmented",
-                for &fps in FRAME_RATES {
+                for &fps in rates {
                     button {
                         class: if current.fps == fps { "on" } else { "" },
                         disabled: running,
@@ -714,7 +922,10 @@ fn ExportPanel(dir: PathBuf) -> Element {
                     let left = exported.left();
                     rsx! {
                         button { class: "primary wide", onclick: start.clone(),
-                            if allowed { "Export MP4" } else { "Export MP4 \u{1f512}" }
+                            if allowed { "Export {kind}" } else { "Export {kind} \u{1f512}" }
+                        }
+                        if gif {
+                            p { class: "hint", "No sound, loops forever. Best for short clips." }
                         }
                         if limited {
                             p { class: "hint",

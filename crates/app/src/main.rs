@@ -1,10 +1,12 @@
 // Release builds on Windows are GUI apps: no console window next to the main one.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod area_picker;
 mod editor;
 mod licence;
 mod media_server;
 mod platform;
+mod settings;
 mod takes;
 mod update_check;
 mod views;

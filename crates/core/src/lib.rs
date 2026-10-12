@@ -6,6 +6,7 @@
 
 pub mod blanks;
 pub mod camera;
+pub mod clips;
 pub mod cursor;
 pub mod events;
 pub mod history;

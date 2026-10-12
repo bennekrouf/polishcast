@@ -1,4 +1,4 @@
-//! Export: a take, as the editor shows it, to an MP4.
+//! Export: a take, as the editor shows it, to an MP4 or an animated GIF.
 //!
 //! ffmpeg decodes the recording into raw frames (resampled to the export's frame rate, and
 //! scaled to the resolution the deepest zoom needs), `Compositor` draws each output frame from
@@ -10,8 +10,9 @@ pub mod sound;
 pub mod tools;
 
 use anyhow::{anyhow, bail, Context, Result};
+use small_video_core::project::Background;
 use small_video_core::{take, EventLog, Project, Timeline};
-use small_video_render::compose::Compositor;
+use small_video_render::compose::{load_image, Compositor};
 use small_video_render::Scene;
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
@@ -20,8 +21,27 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use tiny_skia::{Pixmap, PixmapRef};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Format {
+    /// H.264 with the sound.
+    #[default]
+    Mp4,
+    /// Silent and looping, for pasting into a page, a ticket or a chat.
+    Gif,
+}
+
+impl Format {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Format::Mp4 => "mp4",
+            Format::Gif => "gif",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Settings {
+    pub format: Format,
     /// Pixels along the output's longer side.
     pub long_side: u32,
     pub fps: u32,
@@ -29,7 +49,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { long_side: 1920, fps: 60 }
+        Self { format: Format::Mp4, long_side: 1920, fps: 60 }
     }
 }
 
@@ -121,9 +141,15 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     let screen = dir.join(take::SCREEN);
     let fps = settings.fps.max(1);
 
+    let image = match &project.style.background {
+        Background::Image(name) => {
+            Some(load_image(&dir.join(name)).map_err(|e| anyhow!("Reading the background picture {name}: {e}"))?)
+        }
+        _ => None,
+    };
     let scene = Scene::new(project, &events);
     let (width, height) = scene.output_size(settings.long_side);
-    let compositor = Compositor::new(&scene, width, height);
+    let compositor = Compositor::with_image(&scene, width, height, image.as_ref().map(|i| i.as_ref()));
     let (sw, sh) = source_size(&scene, width, height);
     // Blanks cut: the picture skips them frame by frame, the sound through a filter graph.
     // Faster than recorded: the recording is read at `fps × speed` and every frame kept is
@@ -132,8 +158,10 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     let speed = scene.project.speed();
     let read_fps = fps as f64 * speed;
     let cutting = timeline.parts.len() != 1 || timeline.duration() < scene.project.duration;
-    let sound_filter = match sound::filter(&timeline, cutting, speed) {
-        Some(graph) if sound::has_audio(&ffmpeg, &screen)? => Some(graph),
+    let gif = settings.format == Format::Gif;
+    let tracks = if gif { 0 } else { sound::audio_tracks(&ffmpeg, &screen)? };
+    let sound_filter = match sound::filter(&timeline, cutting, speed, tracks) {
+        Some(graph) if tracks > 0 => Some(graph),
         _ => None,
     };
     let total = (timeline.duration() * fps as f64 / speed).ceil() as u64;
@@ -151,28 +179,38 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
         .context("Starting ffmpeg")?;
     let decoder_errors = collect(decoder.stderr.take());
 
-    let mut encoder = tools::command(&ffmpeg)
-        .args(["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba"])
-        .args(["-s", &format!("{width}x{height}"), "-r", &fps.to_string(), "-i", "-"])
-        .arg("-i")
-        .arg(&screen)
-        .args(if let Some(graph) = &sound_filter {
-            vec!["-filter_complex".to_string(), graph.clone(), "-map".into(), "0:v:0".into()]
-                .into_iter()
-                .chain(["-map".into(), "[aout]".into()])
-                .collect::<Vec<String>>()
-        } else {
-            ["-map", "0:v:0", "-map", "1:a:0?"].map(String::from).to_vec()
-        })
-        .args(["-vf", "scale=out_color_matrix=bt709:out_range=tv", "-pix_fmt", "yuv420p"])
-        .args(["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"])
-        .args(video_codec(width, height, fps))
-        .args(["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"])
-        .arg(out)
-        .stdin(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("Starting ffmpeg")?;
+    let mut encoder = tools::command(&ffmpeg);
+    encoder.args(["-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba"]).args([
+        "-s",
+        &format!("{width}x{height}"),
+        "-r",
+        &fps.to_string(),
+        "-i",
+        "-",
+    ]);
+    if gif {
+        // One palette for the whole video, built from what changes between frames, and only the
+        // changed rectangle of each frame stored: small files that keep text readable.
+        encoder.args(["-filter_complex", GIF_FILTER, "-loop", "0"]);
+    } else {
+        encoder
+            .arg("-i")
+            .arg(&screen)
+            .args(if let Some(graph) = &sound_filter {
+                vec!["-filter_complex".to_string(), graph.clone(), "-map".into(), "0:v:0".into()]
+                    .into_iter()
+                    .chain(["-map".into(), "[aout]".into()])
+                    .collect::<Vec<String>>()
+            } else {
+                ["-map", "0:v:0", "-map", "1:a:0?"].map(String::from).to_vec()
+            })
+            .args(["-vf", "scale=out_color_matrix=bt709:out_range=tv", "-pix_fmt", "yuv420p"])
+            .args(["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"])
+            .args(video_codec(width, height, fps))
+            .args(["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]);
+    }
+    let mut encoder =
+        encoder.arg(out).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().context("Starting ffmpeg")?;
     let encoder_errors = collect(encoder.stderr.take());
 
     let pumped = pump(&mut decoder, &mut encoder, &scene, &timeline, &compositor, (sw, sh), read_fps, progress, cancel);
@@ -259,6 +297,10 @@ fn source_size(scene: &Scene, width: u32, height: u32) -> (u32, u32) {
     let even = |v: f32| (v.round() as u32 / 2 * 2).max(2);
     (even(w), even(h))
 }
+
+/// Encodes a GIF from the frames on input 0.
+const GIF_FILTER: &str =
+    "[0:v]split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle";
 
 fn video_codec(width: u32, height: u32, fps: u32) -> Vec<String> {
     // About 0.1 bit per pixel: screen content compresses well, text stays crisp.
