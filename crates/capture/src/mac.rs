@@ -1,8 +1,8 @@
-//! ScreenCaptureKit session: the display the pointer is on, written straight to a file by
-//! `SCRecordingOutput` (hardware encoded, macOS 15+).
+//! ScreenCaptureKit session: the display the pointer is on, one window, or an area of a
+//! display, written straight to a file by `SCRecordingOutput` (hardware encoded, macOS 15+).
 
 use crate::pointer::{self, Logger};
-use crate::{Codec, Event, Options, Take};
+use crate::{Area, Codec, Event, Options, Source, Take, WindowInfo};
 use anyhow::{anyhow, bail, Context, Result};
 use crossbeam_channel::Sender;
 use screencapturekit::prelude::*;
@@ -44,7 +44,8 @@ pub struct Active {
     pointer: Logger,
     shared: Arc<Shared>,
     dir: PathBuf,
-    /// The display's area in global points, to normalize pointer positions.
+    /// What's recorded, in global points, to normalize pointer positions: the display, the
+    /// window where it was when recording started, or the area.
     frame: CGRect,
     width: u32,
     height: u32,
@@ -54,41 +55,99 @@ fn sc<E: std::fmt::Debug>(what: &'static str) -> impl FnOnce(E) -> anyhow::Error
     move |e| anyhow!("{what}: {e:?}")
 }
 
+const PERMISSION: &str =
+    "Can't list the screens. Allow Small Video in System Settings › Privacy & Security › Screen Recording";
+
+/// Windows worth offering: on screen, normal (not a menu or the Dock), big enough, not ours.
+pub fn windows() -> Vec<WindowInfo> {
+    let Ok(content) = SCShareableContent::get() else {
+        return Vec::new();
+    };
+    let me = std::process::id() as i32;
+    let mut out: Vec<WindowInfo> = content
+        .windows()
+        .iter()
+        .filter(|w| w.is_on_screen() && w.window_layer() == 0)
+        .filter(|w| w.frame().size.width >= 80.0 && w.frame().size.height >= 80.0)
+        .filter_map(|w| {
+            let app = w.owning_application()?;
+            (app.process_id() != me).then(|| WindowInfo {
+                id: w.window_id(),
+                app: app.application_name(),
+                title: w.title().unwrap_or_default(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.app.to_lowercase().cmp(&b.app.to_lowercase()).then(a.title.cmp(&b.title)));
+    out
+}
+
+fn contains(f: CGRect, (x, y): (f64, f64)) -> bool {
+    x >= f.origin.x && x < f.origin.x + f.size.width && y >= f.origin.y && y < f.origin.y + f.size.height
+}
+
 impl Active {
     pub fn start(dir: PathBuf, options: &Options, events: Sender<Event>) -> Result<Self> {
         pointer::prepare_thread();
-        let content = SCShareableContent::get().map_err(sc(
-            "Can't list the screens. Allow Small Video in System Settings › Privacy & Security › Screen Recording",
-        ))?;
+        let content = SCShareableContent::get().map_err(sc(PERMISSION))?;
         let displays = content.displays();
-        let at = pointer::location();
-        let contains = |d: &SCDisplay| {
-            let f = d.frame();
-            at.is_some_and(|(x, y)| {
-                x >= f.origin.x && x < f.origin.x + f.size.width && y >= f.origin.y && y < f.origin.y + f.size.height
-            })
-        };
-        let display = displays.iter().find(|d| contains(d)).or(displays.first()).context("No display to record")?;
-
-        // Leave Small Video's own windows out of the recording.
+        // Leave Small Video's own windows out of a display's recording.
         let me = std::process::id() as i32;
         let own: Vec<_> = content.applications().into_iter().filter(|a| a.process_id() == me).collect();
         let own: Vec<&_> = own.iter().collect();
-        let filter = SCContentFilter::create()
-            .with_display(display)
-            .with_excluding_applications(&own, &[])
-            .build()
-            .map_err(sc("Content filter"))?;
+        let display_at = |point: Option<(f64, f64)>| {
+            displays
+                .iter()
+                .find(|d| point.is_some_and(|p| contains(d.frame(), p)))
+                .or(displays.first())
+                .context("No display to record")
+        };
+        let display_filter = |display: &SCDisplay| {
+            SCContentFilter::create().with_display(display).with_excluding_applications(&own, &[]).build()
+        };
+
+        // The filter, what it shows in global points, and the part of the display to keep.
+        let (filter, frame, crop) = match options.source {
+            Source::Display => {
+                let display = display_at(pointer::location())?;
+                (display_filter(display).map_err(sc("Content filter"))?, display.frame(), None)
+            }
+            Source::Window(id) => {
+                let windows = content.windows();
+                let window = windows
+                    .iter()
+                    .find(|w| w.window_id() == id)
+                    .context("That window has closed. Choose another one to record.")?;
+                let filter = SCContentFilter::create().with_window(window).build().map_err(sc("Content filter"))?;
+                (filter, window.frame(), None)
+            }
+            Source::Area(Area { x, y, w, h }) => {
+                let display = display_at(Some((x + w / 2.0, y + h / 2.0)))?;
+                let d = display.frame();
+                // Kept within the display it's mostly on.
+                let left = x.max(d.origin.x);
+                let top = y.max(d.origin.y);
+                let right = (x + w).min(d.origin.x + d.size.width);
+                let bottom = (y + h).min(d.origin.y + d.size.height);
+                if right - left < 16.0 || bottom - top < 16.0 {
+                    bail!("The area is too small to record.");
+                }
+                let area = CGRect::new(left, top, right - left, bottom - top);
+                let local = CGRect::new(left - d.origin.x, top - d.origin.y, right - left, bottom - top);
+                (display_filter(display).map_err(sc("Content filter"))?, area, Some(local))
+            }
+        };
 
         let scale = filter.point_pixel_scale().max(1.0);
-        let frame = display.frame();
         let full = frame.size.width * scale as f64;
         let px = options.max_width.map_or(full, |m| full.min(m as f64)) / frame.size.width;
         let width = (frame.size.width * px).round() as u32 / 2 * 2;
         let height = (frame.size.height * px).round() as u32 / 2 * 2;
-        let config = SCStreamConfiguration::new()
-            .with_width(width)
-            .with_height(height)
+        let mut config = SCStreamConfiguration::new().with_width(width).with_height(height);
+        if let Some(rect) = crop {
+            config = config.with_source_rect(rect);
+        }
+        let config = config
             .with_fps(options.fps)
             .with_shows_cursor(false)
             .with_captures_audio(options.system_audio)

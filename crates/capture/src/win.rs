@@ -125,6 +125,9 @@ pub struct Active {
 
 impl Active {
     pub fn start(dir: PathBuf, options: &Options, events: Sender<Event>) -> Result<Self> {
+        if options.source != crate::Source::Display {
+            bail!("Recording a window or an area of the screen is only on macOS for now.");
+        }
         pointer::prepare_thread();
         let at = pointer::location().unwrap_or_default();
         // SAFETY: plain Win32 queries; `info` outlives the call that fills it.

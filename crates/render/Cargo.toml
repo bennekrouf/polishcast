@@ -8,3 +8,5 @@ license-file.workspace = true
 small-video-core.workspace = true
 serde.workspace = true
 tiny-skia = "0.12"
+# Background pictures for export.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

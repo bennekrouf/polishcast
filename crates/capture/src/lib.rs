@@ -33,8 +33,61 @@ pub enum Codec {
     Hevc,
 }
 
+/// What a take records.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum Source {
+    /// The display the pointer is on.
+    #[default]
+    Display,
+    /// One window, by its id from [`windows`], even when other windows cover it.
+    Window(u32),
+    /// A rectangle of the screen, in global points (origin at the main display's top-left).
+    Area(Area),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Area {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+/// A window that can be recorded.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WindowInfo {
+    pub id: u32,
+    /// The app it belongs to.
+    pub app: String,
+    pub title: String,
+}
+
+/// Where the pointer is, in global points (origin at the main display's top-left).
+pub fn pointer_location() -> Option<(f64, f64)> {
+    #[cfg(any(target_os = "macos", windows))]
+    return pointer::location();
+    #[cfg(not(any(target_os = "macos", windows)))]
+    None
+}
+
+/// Whether this platform can record the sound apps play, not only the microphone.
+pub const RECORDS_SYSTEM_AUDIO: bool = cfg!(target_os = "macos");
+
+/// Whether this platform can record a window or an area, not only a whole display.
+pub const RECORDS_WINDOWS_AND_AREAS: bool = cfg!(target_os = "macos");
+
+/// The windows on screen that can be recorded, by app. Blocks: the first call may wait on the
+/// Screen Recording permission prompt. Empty where windows can't be recorded.
+pub fn windows() -> Vec<WindowInfo> {
+    #[cfg(target_os = "macos")]
+    return mac::windows();
+    #[cfg(not(target_os = "macos"))]
+    Vec::new()
+}
+
 #[derive(Clone, Debug)]
 pub struct Options {
+    pub source: Source,
     pub fps: u32,
     pub codec: Codec,
     /// Record at most this many pixels wide (the display's full resolution if smaller).
@@ -46,7 +99,14 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        Self { fps: 60, codec: Codec::H264, max_width: None, microphone: true, system_audio: false }
+        Self {
+            source: Source::Display,
+            fps: 60,
+            codec: Codec::H264,
+            max_width: None,
+            microphone: true,
+            system_audio: false,
+        }
     }
 }
 

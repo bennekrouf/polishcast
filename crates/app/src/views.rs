@@ -1,13 +1,14 @@
 //! The window and the menu bar item.
 
 use crate::editor::Editor;
+use crate::settings::{Settings, SourceKind};
 use crate::{platform, takes};
 use dioxus::desktop::tao::event::Event as TaoEvent;
 use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon, TrayIconBuilder};
 use dioxus::desktop::{use_global_shortcut, use_muda_event_handler, use_wry_event_handler, window};
 use dioxus::prelude::*;
-use small_video_capture::{Event, Options, Recorder};
+use small_video_capture::{Area, Event, Options, Recorder, Source, WindowInfo};
 use small_video_core::take;
 use small_video_export::compact::compact;
 use std::collections::HashSet;
@@ -105,21 +106,71 @@ pub fn App() -> Element {
     let mut notice = use_signal(|| Option::<String>::None);
     // A take waiting for the user to confirm moving it to the Trash.
     let mut confirm_delete = use_signal(|| Option::<PathBuf>::None);
+    // The recordings panel on the left; closed, a thin rail keeps Record and a way back.
+    let mut sidebar_open = use_signal(|| true);
     let (compacted_tx, compacted_rx) = use_hook(|| {
         let (tx, rx) = mpsc::channel::<(PathBuf, Result<u64, String>)>();
         (tx, Rc::new(rx))
     });
+    // What to record, and with which sound; kept for next time.
+    let settings = use_signal(Settings::load);
+    // The windows that can be recorded, and the one chosen (this session only: ids don't last).
+    let mut windows = use_signal(Vec::<WindowInfo>::new);
+    let mut chosen_window = use_signal(|| Option::<u32>::None);
+    let refresh_windows = move || {
+        spawn(async move {
+            if let Ok(list) = tokio::task::spawn_blocking(small_video_capture::windows).await {
+                if chosen_window.peek().is_some_and(|id| !list.iter().any(|w| w.id == id)) {
+                    chosen_window.set(None);
+                }
+                windows.set(list);
+            }
+        });
+    };
+    use_hook(move || {
+        if settings.peek().source == SourceKind::Window {
+            refresh_windows();
+        }
+    });
+    // The area picker's answer, and whether it's open (Record is ignored meanwhile).
+    let (area_tx, area_rx) = use_hook(|| {
+        let (tx, rx) = mpsc::channel::<Option<Area>>();
+        (tx, Rc::new(rx))
+    });
+    let mut picking = use_signal(|| false);
+
+    let start = {
+        let recorder = recorder.clone();
+        use_callback(move |source: Source| match takes::new_dir() {
+            Ok(dir) => {
+                error.set(None);
+                let options = Options { source, system_audio: settings.peek().system_audio, ..Options::default() };
+                recorder.start(dir, options);
+                status.set(Status::Starting);
+            }
+            Err(e) => error.set(Some(format!("Can't create the take's folder: {e}"))),
+        })
+    };
 
     let toggle = {
         let recorder = recorder.clone();
+        let area_tx = area_tx.clone();
         use_callback(move |()| match status() {
-            Status::Idle => match takes::new_dir() {
-                Ok(dir) => {
-                    error.set(None);
-                    recorder.start(dir, Options::default());
-                    status.set(Status::Starting);
+            Status::Idle if picking() => {}
+            Status::Idle => match settings.peek().source {
+                SourceKind::Screen => start(Source::Display),
+                SourceKind::Window => match chosen_window() {
+                    Some(id) => start(Source::Window(id)),
+                    None => {
+                        error.set(Some("Choose the window to record first.".into()));
+                        window().set_visible(true);
+                        window().set_focus();
+                    }
+                },
+                SourceKind::Area => {
+                    picking.set(true);
+                    crate::area_picker::open(area_tx.clone());
                 }
-                Err(e) => error.set(Some(format!("Can't create the take's folder: {e}"))),
             },
             Status::Starting | Status::Recording(_) => {
                 recorder.stop();
@@ -161,8 +212,15 @@ pub fn App() -> Element {
         move || {
             let (recorder, tray) = (recorder.clone(), tray.clone());
             let (compacted_tx, compacted_rx) = (compacted_tx.clone(), compacted_rx.clone());
+            let area_rx = area_rx.clone();
             async move {
                 loop {
+                    while let Ok(area) = area_rx.try_recv() {
+                        picking.set(false);
+                        if let Some(area) = area {
+                            start(Source::Area(area));
+                        }
+                    }
                     while let Some(event) = recorder.try_event() {
                         match event {
                             // Unless Stop was already pressed while it was starting.
@@ -227,18 +285,43 @@ pub fn App() -> Element {
             }
         }
         div { class: "app",
-            nav { class: "sidebar",
+            if !sidebar_open() {
+                nav { class: "rail",
+                    button {
+                        class: "panel-toggle",
+                        title: "Show recordings",
+                        onclick: move |_| sidebar_open.set(true),
+                        "›"
+                    }
+                    button {
+                        class: if recording { "record compact on" } else { "record compact" },
+                        title: "{label}",
+                        disabled: status() == Status::Saving,
+                        onclick: move |_| toggle(()),
+                        if recording { "■" } else { "●" }
+                    }
+                }
+            }
+            nav { class: "sidebar", hidden: !sidebar_open(),
                 header {
                     h1 {
                         "Small Video"
                         // Which build is running, for bug reports and support.
                         span { class: "app-version", {concat!("v", env!("CARGO_PKG_VERSION"))} }
                     }
-                    button {
-                        class: if recording { "record on" } else { "record" },
-                        disabled: status() == Status::Saving,
-                        onclick: move |_| toggle(()),
-                        "{label}"
+                    div { class: "header-actions",
+                        button {
+                            class: if recording { "record on" } else { "record" },
+                            disabled: status() == Status::Saving,
+                            onclick: move |_| toggle(()),
+                            "{label}"
+                        }
+                        button {
+                            class: "panel-toggle",
+                            title: "Hide recordings",
+                            onclick: move |_| sidebar_open.set(false),
+                            "‹"
+                        }
                     }
                 }
                 {
@@ -252,6 +335,13 @@ pub fn App() -> Element {
                     rsx! {
                         button { class: "pro-button", title: "{title}", onclick: move |_| open.set(Some(None)), "{label}" }
                     }
+                }
+                RecordSettings {
+                    settings,
+                    windows,
+                    chosen_window,
+                    busy: status() != Status::Idle || picking(),
+                    on_refresh: move |_| refresh_windows(),
                 }
                 p { class: "hint",
                     if shortcut.is_ok() {
@@ -347,6 +437,79 @@ pub fn App() -> Element {
                     Editor { key: "{dir.display()}-{compacting.read().contains(&dir)}", dir }
                 } else {
                     p { class: "empty pad", "Record something to start editing." }
+                }
+            }
+        }
+    }
+}
+
+/// What the next recording takes in: the screen, a window or an area, and whether the Mac's
+/// sound goes in with the microphone. Locked while recording.
+#[component]
+fn RecordSettings(
+    settings: Signal<Settings>,
+    windows: Signal<Vec<WindowInfo>>,
+    chosen_window: Signal<Option<u32>>,
+    busy: bool,
+    on_refresh: EventHandler<()>,
+) -> Element {
+    let current = settings();
+    let mut set = move |change: &dyn Fn(&mut Settings)| {
+        change(&mut settings.write());
+        settings.peek().save();
+    };
+    let sources: &[(SourceKind, &str, &str)] = &[
+        (SourceKind::Screen, "Screen", "The whole screen the pointer is on"),
+        (SourceKind::Window, "Window", "One window, even when others cover it"),
+        (SourceKind::Area, "Area", "Drag across the part to record when you start"),
+    ];
+    rsx! {
+        div { class: "record-settings",
+            if small_video_capture::RECORDS_WINDOWS_AND_AREAS {
+                div { class: "segmented",
+                    for &(kind, name, tip) in sources {
+                        button {
+                            class: if current.source == kind { "on" } else { "" },
+                            title: "{tip}",
+                            disabled: busy,
+                            onclick: move |_| {
+                                set(&|s: &mut Settings| s.source = kind);
+                                if kind == SourceKind::Window {
+                                    on_refresh.call(());
+                                }
+                            },
+                            "{name}"
+                        }
+                    }
+                }
+                if current.source == SourceKind::Window {
+                    div { class: "window-choice",
+                        select {
+                            disabled: busy,
+                            onchange: move |e| chosen_window.set(e.value().parse().ok()),
+                            option { value: "", selected: chosen_window().is_none(), "Choose a window…" }
+                            for w in windows() {
+                                option {
+                                    key: "{w.id}",
+                                    value: "{w.id}",
+                                    selected: chosen_window() == Some(w.id),
+                                    if w.title.is_empty() { "{w.app}" } else { "{w.app} — {w.title}" }
+                                }
+                            }
+                        }
+                        button { title: "Look for windows again", disabled: busy, onclick: move |_| on_refresh.call(()), "↻" }
+                    }
+                }
+            }
+            if small_video_capture::RECORDS_SYSTEM_AUDIO {
+                label { class: "check",
+                    input {
+                        r#type: "checkbox",
+                        checked: current.system_audio,
+                        disabled: busy,
+                        onchange: move |e| set(&|s: &mut Settings| s.system_audio = e.checked()),
+                    }
+                    "Record the Mac's sound too"
                 }
             }
         }
