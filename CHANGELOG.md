@@ -41,6 +41,9 @@ user sees in the update prompt should all be accounted for.
 - Export as an animated GIF: choose **GIF** in the export panel, at 640, 960 or
   1280 px and 10, 15 or 24 fps. It has no sound and loops, for pasting into a
   page, a ticket or a chat.
+- A recording you forget to stop now stops by itself after 2 hours, at 20 GB,
+  or when less than 2 GB is left on the disk, whichever comes first, instead of
+  filling the disk. The take is kept, and the sidebar says why it stopped.
 - The recordings panel on the left can be closed with **‹** to give the editor
   the whole window; a thin strip keeps Record and **›** to open it again.
 
