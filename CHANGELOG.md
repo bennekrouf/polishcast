@@ -16,6 +16,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- A recording you forget to stop now stops by itself after 2 hours, at 20 GB, or
+  when less than 2 GB is left on the disk, whichever comes first, instead of
+  filling the disk. The take is kept, and the sidebar says why it stopped.
+
 ## [0.1.6] - 2026-10-12
 
 ### Added
