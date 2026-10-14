@@ -10,10 +10,10 @@ pub mod sound;
 pub mod tools;
 
 use anyhow::{anyhow, bail, Context, Result};
-use small_video_core::project::Background;
-use small_video_core::{take, EventLog, Project, Timeline};
-use small_video_render::compose::{load_image, Compositor};
-use small_video_render::Scene;
+use polishcast_core::project::Background;
+use polishcast_core::{take, EventLog, Project, Timeline};
+use polishcast_render::compose::{load_image, Compositor};
+use polishcast_render::Scene;
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStderr, Stdio};
@@ -89,7 +89,7 @@ impl std::fmt::Display for Cancelled {
 
 impl std::error::Error for Cancelled {}
 
-/// An installed ffmpeg: ours, then the PATH, Homebrew's and Splitter's. Apps opened from the
+/// An installed ffmpeg: ours, then the PATH, Homebrew's and TrackCut's. Apps opened from the
 /// Finder don't get the shell's PATH, hence the fixed places.
 pub fn ffmpeg() -> Option<PathBuf> {
     let name = format!("ffmpeg{}", std::env::consts::EXE_SUFFIX);

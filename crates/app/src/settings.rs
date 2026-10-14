@@ -34,7 +34,7 @@ impl Settings {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         // Settings carried over from a Mac to a platform that can't record a window or an area.
-        if !small_video_capture::RECORDS_WINDOWS_AND_AREAS {
+        if !polishcast_capture::RECORDS_WINDOWS_AND_AREAS {
             s.source = SourceKind::Screen;
         }
         s

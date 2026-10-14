@@ -3,12 +3,12 @@
 
 use crate::tools;
 use anyhow::{bail, Context, Result};
-use small_video_core::{Loudness, Timeline};
+use polishcast_core::{Loudness, Timeline};
 use std::io::Read;
 use std::path::Path;
 use std::process::Stdio;
 
-/// Splitter's loudness window: 50 ms.
+/// TrackCut's loudness window: 50 ms.
 const WINDOW_SECS: f64 = 0.05;
 const RATE: u32 = 16_000;
 

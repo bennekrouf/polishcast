@@ -20,7 +20,7 @@
 set -euo pipefail
 
 CARGO="Cargo.toml"
-FORMULA="${FORMULA_PATH:-$HOME/code/homebrew-small-video/Formula/small-video.rb}"
+FORMULA="${FORMULA_PATH:-$HOME/code/homebrew-polishcast/Formula/polishcast.rb}"
 DRY_RUN=false
 ALLOW_NO_NOTES=false
 
@@ -181,4 +181,4 @@ git push origin "$TAG"
 
 echo ""
 echo "🚀  $TAG pushed"
-echo "    https://github.com/bennekrouf/smallvideo/releases/tag/$TAG"
+echo "    https://github.com/bennekrouf/polishcast/releases/tag/$TAG"

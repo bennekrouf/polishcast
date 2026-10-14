@@ -216,7 +216,7 @@ button.wide { width: 100%; padding: 8px; }
 .progress .bar { height: 100%; background: var(--zoom); transition: width 0.1s linear; }
 .buttons .hint { flex: 1; }
 
-/* Move a take to the Trash: shown on hover, as in Splitter */
+/* Move a take to the Trash: shown on hover, as in TrackCut */
 .item-trash {
   position: absolute;
   right: 6px;
@@ -283,7 +283,7 @@ button kbd { margin-left: 6px; }
 .timeline .zoom { z-index: 1; }
 .blanks { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; }
 
-/* Small Video Pro */
+/* Polishcast Pro */
 .pro-button { align-self: flex-start; color: var(--zoom); border-color: var(--zoom); }
 .modal textarea.licence-key {
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -301,7 +301,7 @@ button kbd { margin-left: 6px; }
 .button-link { color: var(--zoom); text-decoration: none; align-self: center; padding: 0 6px; }
 .button-link:hover { text-decoration: underline; }
 
-/* Version and update banner, as in GitAgent and Splitter */
+/* Version and update banner, as in GitAgent and TrackCut */
 .app-version { font-size: 10px; font-weight: 400; color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
 .update-banner {
   position: fixed;

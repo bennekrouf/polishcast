@@ -3575,6 +3575,79 @@ dependencies = [
 ]
 
 [[package]]
+name = "polishcast"
+version = "0.1.7"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "dioxus",
+ "dirs",
+ "image",
+ "libc",
+ "polishcast-capture",
+ "polishcast-core",
+ "polishcast-export",
+ "polishcast-render",
+ "serde",
+ "serde_json",
+ "tokio",
+ "trash",
+ "ureq",
+ "windows 0.62.2",
+ "winresource",
+]
+
+[[package]]
+name = "polishcast-capture"
+version = "0.1.7"
+dependencies = [
+ "anyhow",
+ "cpal",
+ "crossbeam-channel",
+ "polishcast-core",
+ "screencapturekit",
+ "serde_json",
+ "windows 0.62.2",
+ "windows-capture",
+]
+
+[[package]]
+name = "polishcast-core"
+version = "0.1.7"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-dalek",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "polishcast-export"
+version = "0.1.7"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "polishcast-core",
+ "polishcast-render",
+ "serde_json",
+ "sha2 0.11.0",
+ "tiny-skia",
+ "ureq",
+ "zip",
+]
+
+[[package]]
+name = "polishcast-render"
+version = "0.1.7"
+dependencies = [
+ "image",
+ "polishcast-core",
+ "serde",
+ "tiny-skia",
+]
+
+[[package]]
 name = "pollster"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4500,79 +4573,6 @@ checksum = "bdd58c3c93c3d278ca835519292445cb4b0d4dc59ccfdf7ceadaab3f8aeb4038"
 dependencies = [
  "serde",
  "version_check",
-]
-
-[[package]]
-name = "small-video"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "chrono",
- "dioxus",
- "dirs",
- "image",
- "libc",
- "serde",
- "serde_json",
- "small-video-capture",
- "small-video-core",
- "small-video-export",
- "small-video-render",
- "tokio",
- "trash",
- "ureq",
- "windows 0.62.2",
- "winresource",
-]
-
-[[package]]
-name = "small-video-capture"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "cpal",
- "crossbeam-channel",
- "screencapturekit",
- "serde_json",
- "small-video-core",
- "windows 0.62.2",
- "windows-capture",
-]
-
-[[package]]
-name = "small-video-core"
-version = "0.1.7"
-dependencies = [
- "base64 0.22.1",
- "ed25519-dalek",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "small-video-export"
-version = "0.1.7"
-dependencies = [
- "anyhow",
- "dirs",
- "serde_json",
- "sha2 0.11.0",
- "small-video-core",
- "small-video-render",
- "tiny-skia",
- "ureq",
- "zip",
-]
-
-[[package]]
-name = "small-video-render"
-version = "0.1.7"
-dependencies = [
- "image",
- "serde",
- "small-video-core",
- "tiny-skia",
 ]
 
 [[package]]

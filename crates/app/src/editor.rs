@@ -6,15 +6,15 @@
 use crate::{media_server, platform};
 use dioxus::desktop::use_asset_handler;
 use dioxus::prelude::*;
+use polishcast_core::blanks::redetect;
+use polishcast_core::clips;
+use polishcast_core::history::History;
+use polishcast_core::project::{Aspect, Background, SPEEDS};
+use polishcast_core::zoom::{self, Zoom};
+use polishcast_core::{take, BlankParams, EventLog, Loudness, Project};
+use polishcast_export::{Format, Progress, Settings};
+use polishcast_render::{compose, Scene};
 use serde::Deserialize;
-use small_video_core::blanks::redetect;
-use small_video_core::clips;
-use small_video_core::history::History;
-use small_video_core::project::{Aspect, Background, SPEEDS};
-use small_video_core::zoom::{self, Zoom};
-use small_video_core::{take, BlankParams, EventLog, Loudness, Project};
-use small_video_export::{Format, Progress, Settings};
-use small_video_render::{compose, Scene};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -768,7 +768,7 @@ enum Export {
 
 /// Where a take's export goes: next to its folder, named after it.
 fn export_path(dir: &std::path::Path, format: Format) -> PathBuf {
-    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Small Video".into());
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Polishcast".into());
     dir.with_file_name(format!("{name}.{}", format.extension()))
 }
 
@@ -804,7 +804,7 @@ fn ExportPanel(dir: PathBuf) -> Element {
                             pro.exported(&take);
                             state.set(Export::Done(out));
                         }
-                        Some((Err(e), _)) if e.is::<small_video_export::Cancelled>() => state.set(Export::Idle),
+                        Some((Err(e), _)) if e.is::<polishcast_export::Cancelled>() => state.set(Export::Idle),
                         Some((Err(e), _)) => state.set(Export::Failed(format!("{e:#}"))),
                         None => {}
                     }
@@ -828,7 +828,7 @@ fn ExportPanel(dir: PathBuf) -> Element {
             let (dir, out) = (dir.clone(), export_path(&dir, settings.format));
             let (p, c, target) = (progress.clone(), cancel.clone(), out.clone());
             std::thread::spawn(move || {
-                let _ = tx.send(small_video_export::export(&dir, &target, settings, &p, &c));
+                let _ = tx.send(polishcast_export::export(&dir, &target, settings, &p, &c));
             });
             fraction.set(0.0);
             state.set(Export::Running { progress, cancel, done, out });
@@ -930,7 +930,7 @@ fn ExportPanel(dir: PathBuf) -> Element {
                         if limited {
                             p { class: "hint",
                                 if !allowed {
-                                    "Free exports used up \u{2014} Small Video Pro exports every take"
+                                    "Free exports used up \u{2014} Polishcast Pro exports every take"
                                 } else if exported.takes.contains(&take) {
                                     "Exporting this take again is free"
                                 } else {
@@ -958,8 +958,8 @@ enum Measure {
 }
 
 fn measure(dir: &std::path::Path) -> anyhow::Result<Option<Loudness>> {
-    let ffmpeg = small_video_export::ensure_ffmpeg(&mut |_| {}, &|| false)?;
-    let loudness = small_video_export::sound::loudness(&ffmpeg, &dir.join(take::SCREEN))?;
+    let ffmpeg = polishcast_export::ensure_ffmpeg(&mut |_| {}, &|| false)?;
+    let loudness = polishcast_export::sound::loudness(&ffmpeg, &dir.join(take::SCREEN))?;
     if let Some(l) = &loudness {
         std::fs::write(dir.join(take::LOUDNESS), serde_json::to_vec(l)?)?;
     }

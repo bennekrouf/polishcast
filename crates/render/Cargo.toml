@@ -1,11 +1,11 @@
 [package]
-name = "small-video-render"
+name = "polishcast-render"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
 
 [dependencies]
-small-video-core.workspace = true
+polishcast-core.workspace = true
 serde.workspace = true
 tiny-skia = "0.12"
 # Background pictures for export.

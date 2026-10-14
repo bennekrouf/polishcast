@@ -1,10 +1,10 @@
-# Small Video
+# Polishcast
 
 ## Release notes
 
-Every change a user of Small Video could notice gets a note in `CHANGELOG.md`, in
+Every change a user of Polishcast could notice gets a note in `CHANGELOG.md`, in
 the same PR as the change. The notes are published as-is at
-<https://mayorana.ch/en/apps/small-video/releases> and in the GitHub Release body.
+<https://mayorana.ch/en/apps/polishcast/releases> and in the GitHub Release body.
 
 - Add bullets under `## [Unreleased]`, grouped under `### Added`, `### Changed`,
   `### Fixed` or `### Removed`. If there is no `[Unreleased]` heading, create

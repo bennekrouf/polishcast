@@ -1,4 +1,4 @@
-//! Small Video Pro licences, checked offline, and the free version's ten exports.
+//! Polishcast Pro licences, checked offline, and the free version's ten exports.
 //!
 //! mayorana.ch signs each licence when it is bought with a private Ed25519 key; the app holds
 //! the public half and checks the signature, so no account, network or activation is
@@ -9,7 +9,7 @@
 //! ```
 //!
 //! with the payload `{"v":1,"id","product","edition","email","issued","updates_until"}` — the
-//! same format as Splitter's and GitAgent's. A licence unlocks every release dated up to
+//! same format as TrackCut's and GitAgent's. A licence unlocks every release dated up to
 //! `updates_until`, and keeps unlocking those releases after that day.
 //!
 //! Without Pro, [`FREE_EXPORTS`] different takes can be exported. Exporting one of them again
@@ -20,7 +20,8 @@ use base64::Engine;
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-/// The product name in every Small Video licence.
+/// The product id in every Polishcast licence. The app was called Small Video when the first
+/// keys were sold, and a key names its product, so the id stays.
 pub const PRODUCT: &str = "small-video";
 
 /// How many different takes the free version exports.
@@ -61,12 +62,12 @@ impl std::fmt::Display for LicenseError {
         match self {
             Self::Malformed => write!(f, "This isn't a complete licence key. Copy the whole key from the email."),
             Self::BadSignature => write!(f, "This licence key isn't valid."),
-            Self::OtherProduct(p) => write!(f, "This is a licence for {p}, not Small Video."),
+            Self::OtherProduct(p) => write!(f, "This is a licence for {p}, not Polishcast."),
         }
     }
 }
 
-/// The licence in `key`, if `public_key` signed it and it is for Small Video. Whitespace is
+/// The licence in `key`, if `public_key` signed it and it is for Polishcast. Whitespace is
 /// ignored, since keys pasted from an email are often wrapped.
 pub fn verify(key: &str, public_key: &[u8; 32]) -> Result<License, LicenseError> {
     let key: String = key.chars().filter(|c| !c.is_whitespace()).collect();

@@ -35,7 +35,7 @@ jobs:
       - run: cargo test --workspace --locked
 
   # ── Windows: blocking ──────────────────────────────────────────────────────
-  # As in Splitter: catches Windows-only breakage (the Windows.Graphics.Capture backend,
+  # As in TrackCut: catches Windows-only breakage (the Windows.Graphics.Capture backend,
   # cfg(windows) code, WebView2, the MSVC build of ring) and runs the same tests there. The
   # windows-latest image has MSVC and the Windows SDK.
   check-windows:

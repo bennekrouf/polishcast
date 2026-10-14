@@ -5,12 +5,12 @@ use crate::pointer::{self, Logger};
 use crate::{Area, Codec, Event, Options, Source, Take, WindowInfo};
 use anyhow::{anyhow, bail, Context, Result};
 use crossbeam_channel::Sender;
+use polishcast_core::take;
 use screencapturekit::prelude::*;
 use screencapturekit::recording_output::{
     RecordingCallbacks, SCRecordingOutput, SCRecordingOutputCodec, SCRecordingOutputConfiguration,
     SCRecordingOutputFileType,
 };
-use small_video_core::take;
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -56,7 +56,7 @@ fn sc<E: std::fmt::Debug>(what: &'static str) -> impl FnOnce(E) -> anyhow::Error
 }
 
 const PERMISSION: &str =
-    "Can't list the screens. Allow Small Video in System Settings › Privacy & Security › Screen Recording";
+    "Can't list the screens. Allow Polishcast in System Settings › Privacy & Security › Screen Recording";
 
 /// Windows worth offering: on screen, normal (not a menu or the Dock), big enough, not ours.
 pub fn windows() -> Vec<WindowInfo> {
@@ -91,7 +91,7 @@ impl Active {
         pointer::prepare_thread();
         let content = SCShareableContent::get().map_err(sc(PERMISSION))?;
         let displays = content.displays();
-        // Leave Small Video's own windows out of a display's recording.
+        // Leave Polishcast's own windows out of a display's recording.
         let me = std::process::id() as i32;
         let own: Vec<_> = content.applications().into_iter().filter(|a| a.process_id() == me).collect();
         let own: Vec<&_> = own.iter().collect();

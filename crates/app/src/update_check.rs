@@ -1,4 +1,4 @@
-//! Lightweight update check, as in GitAgent and Splitter.
+//! Lightweight update check, as in GitAgent and TrackCut.
 //!
 //! Fetches the `latest.json` published with each release and compares its version to this
 //! build's `CARGO_PKG_VERSION`. Cheap and side-effect-free, so it runs in the background a few
@@ -10,14 +10,14 @@ use std::time::Duration;
 
 /// Served from mayorana.ch alongside the builds it describes, so update checks don't depend on
 /// the source repository staying publicly readable.
-const LATEST_URL: &str = "https://mayorana.ch/downloads/small-video/latest/latest.json";
+const LATEST_URL: &str = "https://mayorana.ch/downloads/polishcast/latest/latest.json";
 /// Fallback when `latest.json` has no build for this OS (e.g. an Intel Mac: only Apple Silicon
 /// is built), so the button leads somewhere to pick one instead of to a 404.
-const RELEASES_URL: &str = "https://mayorana.ch/en/apps/small-video";
+const RELEASES_URL: &str = "https://mayorana.ch/en/apps/polishcast";
 
 /// Lets the download logs tell an existing user updating from a new install, and which versions
 /// are still in use.
-const USER_AGENT: &str = concat!("small-video/", env!("CARGO_PKG_VERSION"), " (updater)");
+const USER_AGENT: &str = concat!("polishcast/", env!("CARGO_PKG_VERSION"), " (updater)");
 
 #[derive(Deserialize)]
 struct LatestJson {
@@ -121,10 +121,10 @@ mod tests {
 
     /// The shape published today: a dmg for macOS, an installer for Windows, no Linux.
     const LATEST: &str = r#"{
-      "name": "small-video", "version": "0.1.3", "tag": "v0.1.3",
+      "name": "polishcast", "version": "0.1.3", "tag": "v0.1.3",
       "platforms": {
-        "macos":   { "dmg": { "url": "https://mayorana.ch/downloads/small-video/v0.1.3/small-video-macos-arm64.dmg", "sha256": "x" } },
-        "windows": { "exe_or_msi": { "url": "https://mayorana.ch/downloads/small-video/v0.1.3/small-video-setup.exe", "sha256": "y" } }
+        "macos":   { "dmg": { "url": "https://mayorana.ch/downloads/polishcast/v0.1.3/polishcast-macos-arm64.dmg", "sha256": "x" } },
+        "windows": { "exe_or_msi": { "url": "https://mayorana.ch/downloads/polishcast/v0.1.3/polishcast-setup.exe", "sha256": "y" } }
       }
     }"#;
 
@@ -143,10 +143,10 @@ mod tests {
         assert_eq!(mac.latest_version, "0.1.3");
         assert_eq!(
             mac.download_url,
-            "https://mayorana.ch/downloads/small-video/v0.1.3/small-video-macos-arm64.dmg?src=updater"
+            "https://mayorana.ch/downloads/polishcast/v0.1.3/polishcast-macos-arm64.dmg?src=updater"
         );
         let win = newer_than(LATEST, "0.1.2", "windows").unwrap();
-        assert!(win.download_url.ends_with("small-video-setup.exe?src=updater"));
+        assert!(win.download_url.ends_with("polishcast-setup.exe?src=updater"));
         // Nothing built for it: the app's page, to pick a build by hand.
         assert_eq!(newer_than(LATEST, "0.1.2", "linux").unwrap().download_url, RELEASES_URL);
     }

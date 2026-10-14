@@ -1,6 +1,6 @@
 //! Screen recording.
 //!
-//! A dedicated thread owns the capture session, like splitter's playback engine: the UI sends
+//! A dedicated thread owns the capture session, like TrackCut's playback engine: the UI sends
 //! it commands and polls for events, and never blocks on ScreenCaptureKit (asking for content
 //! can wait on a permission prompt; stopping waits for the file to be finalized).
 //!
@@ -145,7 +145,7 @@ impl Recorder {
         let (tx, rx) = crossbeam_channel::unbounded();
         let (etx, events) = crossbeam_channel::unbounded();
         std::thread::Builder::new()
-            .name("small-video-capture".into())
+            .name("polishcast-capture".into())
             .spawn(move || run(rx, etx))
             .expect("spawn capture thread");
         Self { tx, events }

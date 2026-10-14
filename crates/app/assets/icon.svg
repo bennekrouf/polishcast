@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Small Video app icon.
-  Same family as Splitter, GitAgent and the ais-* apps: squircle ground, white glowing
-  mark, one hue per app. Small Video's hue is rose, which no sibling uses, and it echoes
+  Polishcast app icon.
+  Same family as TrackCut, GitAgent and the ais-* apps: squircle ground, white glowing
+  mark, one hue per app. Polishcast's hue is rose, which no sibling uses, and it echoes
   the default background of its videos.
 
   The mark is the app in one picture: a screen being recorded (the record dot in its
-  corner) with the cursor Small Video redraws over it, breaking out of the frame the way
+  corner) with the cursor Polishcast redraws over it, breaking out of the frame the way
   it glides on top of the recording. The cursor is the app's own pointer shape
   (render::compose::CURSOR_POINTS), scaled ×13 with its tip at (520, 440); a ring in the
   ground colour separates it from the frame. Few, thick shapes so it still reads at 16×16.

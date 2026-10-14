@@ -162,7 +162,7 @@ jobs:
         env:
           # Public half of the key mayorana.ch signs Pro licences with (repository
           # variable, not a secret). Without it the build can't check licences.
-          SMALL_VIDEO_LICENSE_PUBLIC_KEY: ${{ vars.SMALL_VIDEO_LICENSE_PUBLIC_KEY }}
+          POLISHCAST_LICENSE_PUBLIC_KEY: ${{ vars.SMALL_VIDEO_LICENSE_PUBLIC_KEY }}
         run: cargo build --release --target aarch64-apple-darwin
 
       # ── Sign the binary with hardened runtime + webview entitlements ───────
@@ -170,7 +170,7 @@ jobs:
         if: env.HAVE_MAC_SECRETS == 'true'
         run: |
           set -euo pipefail
-          BIN=target/aarch64-apple-darwin/release/small-video
+          BIN=target/aarch64-apple-darwin/release/polishcast
           codesign --force --options runtime --timestamp \
             --entitlements .github/macos-entitlements.plist \
             --sign "$SIGNING_IDENTITY" \
@@ -207,17 +207,17 @@ jobs:
         if: env.HAVE_MAC_SECRETS == 'true'
         run: |
           set -euo pipefail
-          BIN=target/aarch64-apple-darwin/release/small-video
+          BIN=target/aarch64-apple-darwin/release/polishcast
           VER="${GITHUB_REF_NAME#v}"
-          APP="dist/Small Video.app"
+          APP="dist/Polishcast.app"
 
           # 1. Construct the .app bundle around the cargo-built binary. The bundle
           #    identifier must never change: macOS keys the Screen Recording and
           #    Microphone permissions to it (and to the signature), so a new one
           #    would make every user grant them again.
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          cp "$BIN" "$APP/Contents/MacOS/small-video"
-          chmod +x "$APP/Contents/MacOS/small-video"
+          cp "$BIN" "$APP/Contents/MacOS/polishcast"
+          chmod +x "$APP/Contents/MacOS/polishcast"
 
           ICON_KEY=""
           if [ -f dist/icon.icns ]; then
@@ -229,15 +229,15 @@ jobs:
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
-            <key>CFBundleExecutable</key><string>small-video</string>
+            <key>CFBundleExecutable</key><string>polishcast</string>
             <key>CFBundleIdentifier</key><string>ch.mayorana.small-video</string>
-            <key>CFBundleName</key><string>Small Video</string>
-            <key>CFBundleDisplayName</key><string>Small Video</string>
+            <key>CFBundleName</key><string>Polishcast</string>
+            <key>CFBundleDisplayName</key><string>Polishcast</string>
             <key>CFBundlePackageType</key><string>APPL</string>
             <key>CFBundleShortVersionString</key><string>$VER</string>
             <key>CFBundleVersion</key><string>$VER</string>
             <key>LSMinimumSystemVersion</key><string>15.0</string>
-            <key>NSMicrophoneUsageDescription</key><string>Small Video records your voice with the screen.</string>
+            <key>NSMicrophoneUsageDescription</key><string>Polishcast records your voice with the screen.</string>
             <key>NSHighResolutionCapable</key><true/>
             $ICON_KEY
           </dict></plist>
@@ -254,25 +254,25 @@ jobs:
           mkdir -p dmg-staging
           cp -R "$APP" dmg-staging/
           ln -s /Applications dmg-staging/Applications
-          hdiutil create -volname "Small Video" -srcfolder dmg-staging \
-            -ov -format UDZO dist/small-video-macos-arm64.dmg
+          hdiutil create -volname "Polishcast" -srcfolder dmg-staging \
+            -ov -format UDZO dist/polishcast-macos-arm64.dmg
           codesign --force --timestamp --sign "$SIGNING_IDENTITY" \
-            dist/small-video-macos-arm64.dmg
+            dist/polishcast-macos-arm64.dmg
 
           # 4. Notarize the DMG (covers the binary inside via hash) and staple.
           P8="$RUNNER_TEMP/AuthKey_${APP_STORE_KEY_ID}.p8"
           echo "$APP_STORE_KEY" | base64 --decode > "$P8"
 
-          xcrun notarytool submit dist/small-video-macos-arm64.dmg \
+          xcrun notarytool submit dist/polishcast-macos-arm64.dmg \
             --key "$P8" \
             --key-id "$APP_STORE_KEY_ID" \
             --issuer "$APP_STORE_ISSUER_ID" \
             --wait
-          xcrun stapler staple dist/small-video-macos-arm64.dmg
-          xcrun stapler validate dist/small-video-macos-arm64.dmg
+          xcrun stapler staple dist/polishcast-macos-arm64.dmg
+          xcrun stapler validate dist/polishcast-macos-arm64.dmg
 
-          shasum -a 256 dist/small-video-macos-arm64.dmg \
-            > dist/small-video-macos-arm64.dmg.sha256
+          shasum -a 256 dist/polishcast-macos-arm64.dmg \
+            > dist/polishcast-macos-arm64.dmg.sha256
 
       - name: Clean up keychain
         if: always() && env.HAVE_MAC_SECRETS == 'true'
@@ -283,10 +283,10 @@ jobs:
         if: env.HAVE_MAC_SECRETS == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: small-video-macos-arm64
+          name: polishcast-macos-arm64
           path: |
-            dist/small-video-macos-arm64.dmg
-            dist/small-video-macos-arm64.dmg.sha256
+            dist/polishcast-macos-arm64.dmg
+            dist/polishcast-macos-arm64.dmg.sha256
 
   build-windows:
     needs: [prepare]
@@ -324,7 +324,7 @@ jobs:
         env:
           # Public half of the key mayorana.ch signs Pro licences with (repository
           # variable, not a secret). Without it the build can't check licences.
-          SMALL_VIDEO_LICENSE_PUBLIC_KEY: ${{ vars.SMALL_VIDEO_LICENSE_PUBLIC_KEY }}
+          POLISHCAST_LICENSE_PUBLIC_KEY: ${{ vars.SMALL_VIDEO_LICENSE_PUBLIC_KEY }}
         run: cargo build --release
 
       - name: Copy WebView2Loader.dll
@@ -336,7 +336,7 @@ jobs:
 
       # ── Windows code signing ───────────────────────────────────────────────
       # Both the application binary and the installer get signed, in that
-      # order: Inno Setup embeds whatever small-video.exe it finds, so signing
+      # order: Inno Setup embeds whatever polishcast.exe it finds, so signing
       # after packaging would leave an unsigned binary inside a signed
       # installer — SmartScreen and enterprise policies both object to that.
       #
@@ -420,9 +420,9 @@ jobs:
       - name: Checksum installer
         shell: pwsh
         run: |
-          $hash = (Get-FileHash dist\small-video-setup.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  small-video-setup.exe" | Out-File "dist\small-video-setup.exe.sha256" -Encoding ASCII
-          Write-Host "Installer: dist\small-video-setup.exe ($([math]::Round((Get-Item dist\small-video-setup.exe).Length/1MB,1)) MB)"
+          $hash = (Get-FileHash dist\polishcast-setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  polishcast-setup.exe" | Out-File "dist\polishcast-setup.exe.sha256" -Encoding ASCII
+          Write-Host "Installer: dist\polishcast-setup.exe ($([math]::Round((Get-Item dist\polishcast-setup.exe).Length/1MB,1)) MB)"
 
       # Signing provider: the steps above use Azure Trusted Signing. SignPath
       # Foundation is the free alternative for open-source projects, but it
@@ -432,10 +432,10 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: small-video-windows
+          name: polishcast-windows
           path: |
-            dist\small-video-setup.exe
-            dist\small-video-setup.exe.sha256
+            dist\polishcast-setup.exe
+            dist\polishcast-setup.exe.sha256
 
   release:
     needs: [prepare, build-mac, build-windows]
@@ -480,10 +480,10 @@ jobs:
           # Versioned, immutable URLs — the same paths the publish step below
           # rsyncs to. Override with the DOWNLOAD_BASE_URL repo variable if the
           # download host ever moves.
-          BASE="${DL_BASE:-https://mayorana.ch/downloads/small-video}"
+          BASE="${DL_BASE:-https://mayorana.ch/downloads/polishcast}"
           BASE="${BASE%/}/$TAG"
-          MAC_DMG="small-video-macos-arm64.dmg"
-          WIN_EXE="small-video-setup.exe"
+          MAC_DMG="polishcast-macos-arm64.dmg"
+          WIN_EXE="polishcast-setup.exe"
 
           sha() { [ -n "$1" ] && [ -f "release/$1" ] && sha256sum "release/$1" | awk '{print $1}' || echo ""; }
           # Empty when that platform's build failed, so the in-app update banner
@@ -492,7 +492,7 @@ jobs:
 
           cat > release/latest.json <<EOF
           {
-            "name": "small-video",
+            "name": "polishcast",
             "version": "$VER",
             "tag": "$TAG",
             "released_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -506,7 +506,7 @@ jobs:
 
       # ── Release notes feed ─────────────────────────────────────────────────
       # CHANGELOG.md is the only place a release note is written. This turns it
-      # into the feed the website renders at /apps/small-video/releases, and ships
+      # into the feed the website renders at /apps/polishcast/releases, and ships
       # it beside the builds rather than on the source host, for the same reason
       # latest.json lives there.
       #
@@ -530,23 +530,23 @@ jobs:
                  --date "$(date -u +%Y-%m-%d)" \
                  > release/releases.json; then
             echo "::warning::Could not build releases.json from CHANGELOG.md — keeping the published feed."
-            curl -fsS "https://mayorana.ch/downloads/small-video/latest/releases.json" \
+            curl -fsS "https://mayorana.ch/downloads/polishcast/latest/releases.json" \
                  -o release/releases.json \
-              || echo '{"name":"small-video","releases":[]}' > release/releases.json
+              || echo '{"name":"polishcast","releases":[]}' > release/releases.json
           fi
           python3 -c "import json; d=json.load(open('release/releases.json')); print(len(d['releases']), 'releases, newest', d['releases'][0]['version'] if d['releases'] else 'none')"
 
       # ── Publish the signed artifacts to mayorana.ch ────────────────────────
       # The binaries are the product and no longer ride on the public GitHub
       # Release. nginx on the VPS serves them straight off disk from
-      #   /var/www/mayorana-downloads/small-video/{<tag>,latest}/
+      #   /var/www/mayorana-downloads/polishcast/{<tag>,latest}/
       #
       # `latest/` is synced with --delete so it always matches exactly this
       # release: when a platform fails to build, its download 404s instead of
       # quietly serving the previous version under this version's checksum.
       #
       # No mkdir over ssh: the deploy key is confined with rrsync and gets no
-      # shell. rsync creates the final path component, and <root>/small-video
+      # shell. rsync creates the final path component, and <root>/polishcast
       # already exists on the server.
       #
       # Unset secrets = skip with a warning, so a fork or an unconfigured
@@ -580,7 +580,7 @@ jobs:
             exit 1
           fi
 
-          ROOT="${DEST_ROOT:-}/small-video"
+          ROOT="${DEST_ROOT:-}/polishcast"
 
           install -m 700 -d ~/.ssh
           trap 'rm -f ~/.ssh/dist_key' EXIT
@@ -622,7 +622,7 @@ jobs:
           if [ -n "$CHANGES" ]; then
             printf "## What's new in %s\n\n%s\n\n" "$TAG" "$CHANGES" >> notes.md
           fi
-          printf '%s\n\n' "Every version, with its notes: **[mayorana.ch/en/apps/small-video/releases](https://mayorana.ch/en/apps/small-video/releases)**" >> notes.md
+          printf '%s\n\n' "Every version, with its notes: **[mayorana.ch/en/apps/polishcast/releases](https://mayorana.ch/en/apps/polishcast/releases)**" >> notes.md
 
           # The standing download instructions, appended below whatever this
           # release changed. Quoted heredoc: the shell must not touch the
@@ -631,17 +631,17 @@ jobs:
           ## Download
 
           ### macOS (Apple Silicon, macOS 15 or later)
-          Download `small-video-macos-arm64.dmg`, open it, and drag Small Video to /Applications.
+          Download `polishcast-macos-arm64.dmg`, open it, and drag Polishcast to /Applications.
           The first recording asks for Screen Recording and Microphone access.
           Signed with Apple Developer ID and notarized — opens with a normal double-click.
           (Only shipped once the macOS signing secrets are configured — see the workflow.)
 
           ### Windows (10 version 2004 or later, 11 recommended)
-          Download `small-video-setup.exe` and run it — the installer handles everything.
+          Download `polishcast-setup.exe` and run it — the installer handles everything.
           EOF
 
           gh release create "$TAG" \
-            --title "Small Video $TAG" \
+            --title "Polishcast $TAG" \
             --notes-file notes.md \
             release/latest.json \
             release/releases.json

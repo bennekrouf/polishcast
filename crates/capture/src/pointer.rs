@@ -5,7 +5,7 @@
 //! Positions are in the platform's global desktop coordinates (points on macOS, physical
 //! pixels on Windows), turned into the take's normalized coordinates by `event_log`.
 
-use small_video_core::{Button, Click, CursorSample, EventLog};
+use polishcast_core::{Button, Click, CursorSample, EventLog};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -96,7 +96,7 @@ mod sys {
     //! Core Graphics: positions in global display points, origin at the main display's
     //! top-left.
 
-    use small_video_core::Button;
+    use polishcast_core::Button;
     use std::ffi::c_void;
 
     #[repr(C)]
@@ -151,7 +151,7 @@ mod sys {
     //! Win32: positions in physical pixels on the virtual desktop, origin at the primary
     //! monitor's top-left.
 
-    use small_video_core::Button;
+    use polishcast_core::Button;
     use windows::Win32::Foundation::POINT;
     use windows::Win32::UI::HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};

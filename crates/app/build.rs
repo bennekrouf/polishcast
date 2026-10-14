@@ -1,5 +1,5 @@
 //! Build script: links the Swift runtime on macOS, and embeds the app icon into the .exe on
-//! Windows (as Splitter does).
+//! Windows (as TrackCut does).
 //!
 //! The Windows icon is `assets/icon.ico`, generated from `assets/icon.png` (release CI runs
 //! `magick icon.png -define icon:auto-resize=16,24,32,48,64,128,256 icon.ico`). If it's
@@ -9,14 +9,14 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=assets/icon.ico");
 
-    // What a Pro licence's `updates_until` is compared with: SMALL_VIDEO_RELEASE_DATE if set,
+    // What a Pro licence's `updates_until` is compared with: POLISHCAST_RELEASE_DATE if set,
     // else the date of the commit being built (the release commit, in CI), else empty
     // (unknown: every licence covers it). The public key is read by the app with
     // `option_env!`; listed here so changing it rebuilds.
-    println!("cargo:rerun-if-env-changed=SMALL_VIDEO_RELEASE_DATE");
-    println!("cargo:rerun-if-env-changed=SMALL_VIDEO_LICENSE_PUBLIC_KEY");
-    let date = std::env::var("SMALL_VIDEO_RELEASE_DATE").ok().filter(|d| !d.is_empty()).or_else(commit_date);
-    println!("cargo:rustc-env=SMALL_VIDEO_RELEASE_DATE={}", date.unwrap_or_default());
+    println!("cargo:rerun-if-env-changed=POLISHCAST_RELEASE_DATE");
+    println!("cargo:rerun-if-env-changed=POLISHCAST_LICENSE_PUBLIC_KEY");
+    let date = std::env::var("POLISHCAST_RELEASE_DATE").ok().filter(|d| !d.is_empty()).or_else(commit_date);
+    println!("cargo:rustc-env=POLISHCAST_RELEASE_DATE={}", date.unwrap_or_default());
 
     // ScreenCaptureKit's bindings are Swift; the binary must find the Swift runtime that ships
     // with macOS. The bindings' own build script adds this rpath only to its own targets.
@@ -36,8 +36,8 @@ fn main() {
         }
         let mut res = winresource::WindowsResource::new();
         res.set_icon("assets/icon.ico");
-        res.set("FileDescription", "Small Video");
-        res.set("ProductName", "Small Video");
+        res.set("FileDescription", "Polishcast");
+        res.set("ProductName", "Polishcast");
         res.set("CompanyName", "Mayorana");
         res.set("LegalCopyright", "© 2026 Mayorana");
         if let Err(e) = res.compile() {

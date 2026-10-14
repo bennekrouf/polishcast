@@ -1,5 +1,5 @@
 [package]
-name = "small-video-core"
+name = "polishcast-core"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true

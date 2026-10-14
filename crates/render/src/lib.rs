@@ -6,11 +6,11 @@
 
 pub mod compose;
 
+use polishcast_core::camera::viewport_at;
+use polishcast_core::cursor::{activity, click_at, idle_opacity, smooth};
+use polishcast_core::events::position_at;
+use polishcast_core::{Click, CursorSample, EventLog, Project, Viewport};
 use serde::Serialize;
-use small_video_core::camera::viewport_at;
-use small_video_core::cursor::{activity, click_at, idle_opacity, smooth};
-use small_video_core::events::position_at;
-use small_video_core::{Click, CursorSample, EventLog, Project, Viewport};
 
 /// A rectangle in output pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -201,7 +201,7 @@ fn fit(ratio: f32, area: Rect) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use small_video_core::project::Aspect;
+    use polishcast_core::project::Aspect;
 
     fn scene(aspect: Aspect) -> Scene {
         let mut p = Project::new(10.0, 1600, 1000, &EventLog::default());
@@ -234,7 +234,7 @@ mod tests {
         let mut p = Project::new(10.0, 1600, 1000, &EventLog::default());
         let events = EventLog {
             cursor: vec![CursorSample { t: 0.0, x: 0.5, y: 0.5 }],
-            clicks: vec![small_video_core::Click { t: 2.0, x: 0.5, y: 0.5, button: small_video_core::Button::Left }],
+            clicks: vec![polishcast_core::Click { t: 2.0, x: 0.5, y: 0.5, button: polishcast_core::Button::Left }],
         };
         let s = Scene::new(p.clone(), &events);
         let f = s.frame(2.1, 1600, 1000);
