@@ -6,6 +6,7 @@ mod editor;
 mod licence;
 mod limits;
 mod media_server;
+mod old_app;
 mod platform;
 mod settings;
 mod takes;

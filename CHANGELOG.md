@@ -16,6 +16,15 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- On a Mac that still has Small Video.app, the app under its old name,
+  Polishcast offers to quit it and move it to the Trash. Opening it by mistake
+  from the Dock or Spotlight started the old version, which kept saying an
+  update was available even after you had installed it.
+
 ## [0.1.11] - 2026-10-14
 
 ### Fixed
@@ -24,6 +33,7 @@ user sees in the update prompt should all be accounted for.
   recording, no longer opens half-written with a "Compacting failed … moov atom
   not found" message. Polishcast now waits until the file is complete before
   opening and shrinking it.
+
 ## [0.1.10] - 2026-10-14
 
 ### Added
