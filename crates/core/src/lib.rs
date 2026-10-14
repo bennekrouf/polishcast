@@ -24,6 +24,9 @@ pub use zoom::Zoom;
 pub mod take {
     /// The screen recording, cursor hidden, with the microphone's sound.
     pub const SCREEN: &str = "screen.mov";
+    /// The sound apps played, when it was recorded apart from the screen: only while
+    /// recording one window, until it's mixed into the screen recording.
+    pub const SOUND: &str = "sound.mov";
     /// Pointer movements and clicks (`EventLog` as JSON).
     pub const EVENTS: &str = "events.json";
     /// The user's edits (`Project` as JSON).

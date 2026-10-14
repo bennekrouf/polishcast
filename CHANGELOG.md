@@ -16,6 +16,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Fixed
+
+- Recording one window with the Mac's sound on now includes the sound of every
+  app, not only the recorded window's. Music playing in a browser behind the
+  window used to be missing, and only came through faintly via the microphone.
+
 ## [0.1.12] - 2026-10-14
 
 ### Added
