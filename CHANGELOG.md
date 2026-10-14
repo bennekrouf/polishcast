@@ -16,6 +16,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- Added support for recording system audio and specific windows on macOS. This
+  allows users to capture audio from their system and record specific windows,
+  enhancing the flexibility and utility of the application.
+
 ## [0.1.9] - 2026-10-14
 
 ### Changed
