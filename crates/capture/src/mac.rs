@@ -82,6 +82,40 @@ pub fn windows() -> Vec<WindowInfo> {
     out
 }
 
+/// How long ScreenCaptureKit gets to finish writing the file after the recording stops.
+const FINALIZING: Duration = Duration::from_secs(60);
+
+/// Whether a QuickTime file has its index (`moov`), which is written when the file is
+/// finished. Only the top-level box headers are read.
+fn has_index(file: &std::path::Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = std::fs::File::open(file) else {
+        return false;
+    };
+    let len = f.metadata().map_or(0, |m| m.len());
+    let mut at = 0u64;
+    let mut header = [0u8; 16];
+    while at + 8 <= len {
+        if f.seek(SeekFrom::Start(at)).is_err() || f.read_exact(&mut header[..8]).is_err() {
+            return false;
+        }
+        if &header[4..8] == b"moov" {
+            return true;
+        }
+        let size = match u32::from_be_bytes(header[..4].try_into().unwrap()) as u64 {
+            1 if f.read_exact(&mut header[8..]).is_ok() => u64::from_be_bytes(header[8..].try_into().unwrap()),
+            // Zero runs to the end of the file: a box still being written.
+            0 | 1 => return false,
+            n => n,
+        };
+        if size < 8 {
+            return false;
+        }
+        at += size;
+    }
+    false
+}
+
 fn contains(f: CGRect, (x, y): (f64, f64)) -> bool {
     x >= f.origin.x && x < f.origin.x + f.size.width && y >= f.origin.y && y < f.origin.y + f.size.height
 }
@@ -192,8 +226,9 @@ impl Active {
         let _ = self.stream.stop_capture();
         let raw = self.pointer.finish();
         removed?;
-        // The file is finalized after the stream stops; its delegate says when.
-        let ended = self.shared.wait_done(Duration::from_secs(10));
+        // The file is finalized after the stream stops; its delegate says when. A long take
+        // can take a while, and its index is only written at the very end.
+        let ended = self.shared.wait_done(FINALIZING);
         if let Some(e) = self.shared.failed.lock().unwrap().take() {
             bail!("Recording failed: {e}");
         }
@@ -204,14 +239,55 @@ impl Active {
                 if ended { "ScreenCaptureKit wrote no file" } else { "it never finished" }
             );
         }
-        let started = self.shared.started.lock().unwrap().context("The recording never started")?;
         let d = self.output.recorded_duration();
         let duration = if d.timescale > 0 { d.value as f64 / d.timescale as f64 } else { 0.0 };
+        // Opening or compacting a file without its index fails, so wait for it, with the
+        // session released in case that's what lets it be written.
+        drop(self.stream);
+        drop(self.output);
+        let deadline = Instant::now() + FINALIZING;
+        while !has_index(&file) {
+            if Instant::now() >= deadline {
+                bail!("The recording wasn't saved: ScreenCaptureKit never finished writing it.");
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        let started = self.shared.started.lock().unwrap().context("The recording never started")?;
 
         let f = self.frame;
         let log = pointer::event_log(&raw, started, (f.origin.x, f.origin.y), (f.size.width, f.size.height));
         std::fs::write(self.dir.join(take::EVENTS), serde_json::to_vec(&log)?)?;
         // ScreenCaptureKit's file output has no bitrate setting: worth shrinking afterwards.
         Ok(Take { dir: self.dir, duration, width: self.width, height: self.height, compact: true })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_index;
+
+    fn r#box(kind: &[u8; 4], body: usize) -> Vec<u8> {
+        let mut b = ((8 + body) as u32).to_be_bytes().to_vec();
+        b.extend_from_slice(kind);
+        b.resize(8 + body, 0);
+        b
+    }
+
+    #[test]
+    fn index_is_found_only_once_written() {
+        let dir = std::env::temp_dir().join(format!("polishcast-index-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("screen.mov");
+        let mut bytes = [r#box(b"ftyp", 12), r#box(b"wide", 0), r#box(b"mdat", 1000)].concat();
+        // Still recording: the media box is cut short.
+        std::fs::write(&file, &bytes[..500]).unwrap();
+        assert!(!has_index(&file));
+        // Media complete, index not written yet.
+        std::fs::write(&file, &bytes).unwrap();
+        assert!(!has_index(&file));
+        bytes.extend(r#box(b"moov", 100));
+        std::fs::write(&file, &bytes).unwrap();
+        assert!(has_index(&file));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
