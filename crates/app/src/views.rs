@@ -96,6 +96,9 @@ pub fn App() -> Element {
         }
     });
     let tray = use_hook(|| std::rc::Rc::new(Tray::new()));
+    // Small Video.app, left in Applications by the update that renamed the app.
+    let mut old_app = use_signal(|| Option::<PathBuf>::None);
+    let mut old_app_error = use_signal(|| Option::<String>::None);
     use_hook(|| platform::exclude_from_capture(&window()));
     let mut status = use_signal(|| Status::Idle);
     let mut error = use_signal(|| Option::<String>::None);
@@ -113,7 +116,12 @@ pub fn App() -> Element {
         (tx, Rc::new(rx))
     });
     // What to record, and with which sound; kept for next time.
-    let settings = use_signal(Settings::load);
+    let mut settings = use_signal(Settings::load);
+    use_hook(move || {
+        if !settings.peek().keep_old_app {
+            old_app.set(crate::old_app::find());
+        }
+    });
     // The windows that can be recorded, and the one chosen (this session only: ids don't last).
     let mut windows = use_signal(Vec::<WindowInfo>::new);
     let mut chosen_window = use_signal(|| Option::<u32>::None);
@@ -303,6 +311,49 @@ pub fn App() -> Element {
                 }
                 a { class: "update-banner-link", href: "{info.download_url}", target: "_blank", "Download" }
                 button { class: "update-banner-dismiss", title: "Dismiss", onclick: move |_| update.set(None), "×" }
+            }
+        } else if let Some(app) = old_app() {
+            div { class: "update-banner",
+                span { class: "update-banner-text",
+                    if let Some(e) = old_app_error() {
+                        "Couldn't move Small Video to the Trash ({e}). Drag it there from {platform::FILE_MANAGER}."
+                    } else {
+                        "Small Video, this app under its old name, is still in Applications. "
+                        "Opening it starts the old version."
+                    }
+                }
+                if old_app_error().is_some() {
+                    button {
+                        class: "update-banner-link",
+                        onclick: {
+                            let app = app.clone();
+                            move |_| platform::reveal(&app)
+                        },
+                        "{platform::SHOW_IN_FOLDER}"
+                    }
+                } else {
+                    button {
+                        class: "update-banner-link",
+                        onclick: {
+                            let app = app.clone();
+                            move |_| match crate::old_app::remove(&app) {
+                                Ok(()) => old_app.set(None),
+                                Err(e) => old_app_error.set(Some(e)),
+                            }
+                        },
+                        "Move to Trash"
+                    }
+                    button {
+                        class: "update-banner-link",
+                        onclick: move |_| {
+                            settings.write().keep_old_app = true;
+                            settings.peek().save();
+                            old_app.set(None);
+                        },
+                        "Keep"
+                    }
+                }
+                button { class: "update-banner-dismiss", title: "Dismiss", onclick: move |_| old_app.set(None), "×" }
             }
         }
         div { class: "app",

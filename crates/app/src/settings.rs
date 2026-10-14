@@ -20,6 +20,9 @@ pub struct Settings {
     /// Sound played by apps, recorded along with the microphone.
     #[serde(default)]
     pub system_audio: bool,
+    /// Asked not to be offered to remove Small Video.app, the app under its old name.
+    #[serde(default)]
+    pub keep_old_app: bool,
 }
 
 fn path() -> Option<PathBuf> {
