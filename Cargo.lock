@@ -3576,7 +3576,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3600,7 +3600,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-capture"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "cpal",
@@ -3614,7 +3614,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-core"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -3624,7 +3624,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-export"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3639,7 +3639,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-render"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "image",
  "polishcast-core",
