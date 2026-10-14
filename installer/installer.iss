@@ -1,15 +1,15 @@
-; Small Video — Windows Installer
+; Polishcast — Windows Installer
 ; Build: iscc /DMyAppVersion=X.Y.Z installer\installer.iss
-; Output: dist\small-video-setup.exe
+; Output: dist\polishcast-setup.exe
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.1.0"
 #endif
 
-#define MyAppName      "Small Video"
+#define MyAppName      "Polishcast"
 #define MyAppPublisher "Mayorana"
-#define MyAppURL       "https://github.com/bennekrouf/smallvideo"
-#define MyAppExeName   "small-video.exe"
+#define MyAppURL       "https://github.com/bennekrouf/polishcast"
+#define MyAppExeName   "polishcast.exe"
 
 [Setup]
 AppId={{B8AE3061-4BF6-4AF3-BCAA-D8BC0CB179B2}
@@ -19,14 +19,14 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases/latest
-; Per-user install — Small Video needs no elevation and should never require an
+; Per-user install — Polishcast needs no elevation and should never require an
 ; admin prompt to run. Its webview data and the ffmpeg it fetches live in
-; %LOCALAPPDATA%\Small Video\ (created at launch); takes are saved in Videos\Small Video.
+; %LOCALAPPDATA%\Small Video\ (created at launch; the app's name before Polishcast); takes are saved in Videos\Polishcast.
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\dist
-OutputBaseFilename=small-video-setup
+OutputBaseFilename=polishcast-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -60,7 +60,7 @@ Name: "desktopicon"; \
   GroupDescription: "Additional shortcuts:"
 
 [Files]
-Source: "..\target\release\small-video.exe";        DestDir: "{app}"; Flags: ignoreversion
+Source: "..\target\release\polishcast.exe";        DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\WebView2Loader.dll";  DestDir: "{app}"; Flags: ignoreversion
 ; Ship the .ico alongside the .exe so shortcuts can point at it explicitly —
 ; otherwise some Windows builds fail to extract the embedded icon for shortcut

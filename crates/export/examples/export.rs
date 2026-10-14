@@ -1,7 +1,7 @@
-//! Exports a take without the app: `cargo run --release -p small-video-export --example export
+//! Exports a take without the app: `cargo run --release -p polishcast-export --example export
 //! -- <take dir> <out.mp4> [long side] [fps]`.
 
-use small_video_export::{export, Progress, Settings};
+use polishcast_export::{export, Progress, Settings};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 

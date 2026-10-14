@@ -1,9 +1,9 @@
-//! Records the screen for a few seconds, without the app: `cargo run -p small-video-capture
+//! Records the screen for a few seconds, without the app: `cargo run -p polishcast-capture
 //! --example record -- <dir> [seconds]`. Prints every event, for debugging capture.
 //!
 //! `SV_FPS`, `SV_CODEC` (h264 or hevc) and `SV_MAX_WIDTH` override the default options.
 
-use small_video_capture::{Codec, Event, Options, Recorder};
+use polishcast_capture::{Codec, Event, Options, Recorder};
 use std::time::Duration;
 
 fn next(recorder: &Recorder) -> Event {

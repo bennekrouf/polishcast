@@ -1,11 +1,11 @@
 [package]
-name = "small-video-capture"
+name = "polishcast-capture"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
 
 [dependencies]
-small-video-core.workspace = true
+polishcast-core.workspace = true
 anyhow.workspace = true
 crossbeam-channel.workspace = true
 serde_json.workspace = true
@@ -16,7 +16,7 @@ screencapturekit = { version = "11", features = ["macos_15_0"] }
 
 
 # Windows.Graphics.Capture and Media Foundation encoding; cpal for the microphone (as in
-# Splitter); Win32 for the pointer and the monitor under it.
+# TrackCut); Win32 for the pointer and the monitor under it.
 [target.'cfg(windows)'.dependencies]
 windows-capture = "2"
 cpal = "0.15"

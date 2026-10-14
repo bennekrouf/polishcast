@@ -4,7 +4,7 @@
 //! What doesn't change from frame to frame (background, shadow, the corner mask) is drawn once.
 
 use crate::{Frame, Scene};
-use small_video_core::project::Background;
+use polishcast_core::project::Background;
 use tiny_skia::{
     Color, FillRule, FilterQuality, GradientStop, IntSize, LinearGradient, Mask, Paint, Path, PathBuilder, Pixmap,
     PixmapPaint, PixmapRef, Point, SpreadMode, Stroke, Transform,
@@ -242,7 +242,7 @@ fn darken(rgba: &mut [u8], coverage: &[f32], alpha: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use small_video_core::{CursorSample, EventLog, Project};
+    use polishcast_core::{CursorSample, EventLog, Project};
 
     fn scene(shadow: bool) -> Scene {
         let mut p = Project::new(1.0, 100, 50, &EventLog::default());
@@ -299,7 +299,7 @@ mod tests {
         p.style.background = Background::Color("#000000".into());
         let events = EventLog {
             cursor: vec![CursorSample { t: 0.0, x: 0.5, y: 0.5 }],
-            clicks: vec![small_video_core::Click { t: 0.0, x: 0.5, y: 0.5, button: small_video_core::Button::Left }],
+            clicks: vec![polishcast_core::Click { t: 0.0, x: 0.5, y: 0.5, button: polishcast_core::Button::Left }],
         };
         let s = Scene::new(p, &events);
         let comp = Compositor::new(&s, 200, 100);

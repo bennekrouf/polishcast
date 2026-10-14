@@ -1,15 +1,15 @@
 [package]
-name = "small-video"
+name = "polishcast"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
 description = "Record your screen, get a polished video"
 
 [dependencies]
-small-video-core.workspace = true
-small-video-capture.workspace = true
-small-video-render.workspace = true
-small-video-export.workspace = true
+polishcast-core.workspace = true
+polishcast-capture.workspace = true
+polishcast-render.workspace = true
+polishcast-export.workspace = true
 anyhow.workspace = true
 dioxus.workspace = true
 # rt: measuring a take's loudness off the UI thread (spawn_blocking; Dioxus runs on tokio).
@@ -22,7 +22,7 @@ base64.workspace = true
 ureq = "3.4.2"
 # Decodes the embedded icons (window and menu bar); png is the only format needed.
 image = { version = "0.25", default-features = false, features = ["png"] }
-# Deleting a take moves its folder to the system Trash, so it can be restored (as in Splitter).
+# Deleting a take moves its folder to the system Trash, so it can be restored (as in TrackCut).
 trash = "5.2"
 # Names each take's folder after the local time it started.
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

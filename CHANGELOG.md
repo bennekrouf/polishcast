@@ -1,11 +1,11 @@
 # Changelog
 
-What changed in each release of **Small Video**, the screen recorder that turns
+What changed in each release of **Polishcast**, the screen recorder that turns
 a take into a polished video: smooth cursor, zoom on clicks, background and
 rounded corners.
 
 The public version of this page — with the download for each release — lives at
-<https://mayorana.ch/en/apps/small-video/releases>. It is generated from this
+<https://mayorana.ch/en/apps/polishcast/releases>. It is generated from this
 file by `scripts/changelog_to_json.py`, so this file is the only place a release
 note is written.
 
@@ -15,6 +15,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
+
+## [Unreleased]
+
+### Changed
+
+- Small Video is now called Polishcast. Your takes move from `Movies/Small Video`
+  to `Movies/Polishcast` (`Videos\Polishcast` on Windows) the first time it
+  starts; your Pro licence and settings carry over, and macOS keeps the Screen
+  Recording permission you gave it. On macOS the update installs as
+  Polishcast.app; once it runs, you can delete Small Video.app from
+  Applications.
 
 ## [0.1.7] - 2026-10-13
 
@@ -59,7 +70,7 @@ user sees in the update prompt should all be accounted for.
 
 ### Added
 
-- When you click the Small Video icon in the Dock, Finder, or Launchpad while
+- When you click the Polishcast icon in the Dock, Finder, or Launchpad while
   the window is closed, the app now opens and focuses the window. This makes it
   easier to access the app quickly.
 
@@ -77,10 +88,10 @@ user sees in the update prompt should all be accounted for.
 
 ### Added
 
-- The version you are running now shows next to the Small Video name at the
+- The version you are running now shows next to the Polishcast name at the
   top of the sidebar and in the window title, so it is at hand when you report
   a problem or check whether an update installed.
-- When a newer version of Small Video is out, a banner at the top of the
+- When a newer version of Polishcast is out, a banner at the top of the
   window says so and **Download** fetches it for your system. **×** hides it
   until the next start.
 
@@ -88,10 +99,10 @@ user sees in the update prompt should all be accounted for.
 
 ### Added
 
-- Small Video Pro. The free version exports 10 different takes; exporting one
+- Polishcast Pro. The free version exports 10 different takes; exporting one
   of them again, after changing a zoom for instance, is free, and recording
   and editing are never limited. The export panel shows how many free exports
-  are left, and **Get Pro…** in the sidebar is where you buy Small Video Pro
+  are left, and **Get Pro…** in the sidebar is where you buy Polishcast Pro
   or paste your licence key to export every take. The key is checked on your
   computer, with no account and nothing sent anywhere.
 
@@ -101,7 +112,7 @@ user sees in the update prompt should all be accounted for.
 
 - Record your screen from the menu bar (macOS) or the notification area
   (Windows), or with ⌘⇧2 / Ctrl+Shift+2 from any app. The display your pointer
-  is on is recorded with your microphone, and Small Video's own windows are
+  is on is recorded with your microphone, and Polishcast's own windows are
   left out.
 - The cursor is redrawn instead of recorded, so it glides smoothly and can be
   made bigger. Clicks become zooms that ease in on where you clicked.

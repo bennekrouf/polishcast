@@ -1,15 +1,34 @@
-//! Takes on disk: one folder per recording under ~/Movies/Small Video.
+//! Takes on disk: one folder per recording under ~/Movies/Polishcast.
 
-use small_video_capture::Take;
-use small_video_core::{take, EventLog, Project};
-use std::path::PathBuf;
+use polishcast_capture::Take;
+use polishcast_core::{take, EventLog, Project};
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
-/// `SMALL_VIDEO_LIBRARY` overrides it (for development and tests).
+/// `POLISHCAST_LIBRARY` overrides it (for development and tests).
 pub fn library() -> PathBuf {
-    if let Some(dir) = std::env::var_os("SMALL_VIDEO_LIBRARY") {
+    if let Some(dir) = std::env::var_os("POLISHCAST_LIBRARY") {
         return dir.into();
     }
-    dirs::video_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Movies")).join("Small Video")
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let videos = dirs::video_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Movies"));
+        moved_into_place(&videos.join("Small Video"), videos.join("Polishcast"))
+    })
+    .clone()
+}
+
+/// `dir`, after moving `legacy` there if only `legacy` exists. The app was called Small Video, and
+/// its takes were kept under that name. If the move fails the old folder stays in use: takes the
+/// app cannot find would look deleted.
+fn moved_into_place(legacy: &Path, dir: PathBuf) -> PathBuf {
+    if dir.exists() || !legacy.exists() {
+        return dir;
+    }
+    match std::fs::rename(legacy, &dir) {
+        Ok(()) => dir,
+        Err(_) => legacy.to_path_buf(),
+    }
 }
 
 /// A new, empty folder for the next take, named after the time it starts.
@@ -77,10 +96,27 @@ mod tests {
     /// Moves a real (empty-ish) folder to the system Trash.
     #[test]
     fn a_take_folder_goes_to_the_trash() {
-        let dir = std::env::temp_dir().join(format!("small-video-trash-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("polishcast-trash-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(take::SCREEN), b"not really a movie").unwrap();
         move_to_trash(&dir).unwrap();
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn takes_saved_under_the_old_name_move_to_the_new_one() {
+        let base = std::env::temp_dir().join(format!("polishcast-library-test-{}", std::process::id()));
+        let (legacy, dir) = (base.join("Small Video"), base.join("Polishcast"));
+        std::fs::create_dir_all(legacy.join("take")).unwrap();
+
+        assert_eq!(moved_into_place(&legacy, dir.clone()), dir);
+        assert!(dir.join("take").is_dir());
+        assert!(!legacy.exists());
+
+        // Once moved, a folder left with the old name is not touched again.
+        std::fs::create_dir_all(&legacy).unwrap();
+        assert_eq!(moved_into_place(&legacy, dir.clone()), dir);
+        assert!(legacy.exists());
+        std::fs::remove_dir_all(base).unwrap();
     }
 }

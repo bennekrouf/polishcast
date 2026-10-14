@@ -1,11 +1,11 @@
-# Small Video
+# Polishcast
 
 Record your screen, a window or an area from the menu bar, get a polished video: smooth
 cursor with a ring on clicks, automatic zoom on clicks, background (colour, gradient or your
 own picture), padding and rounded corners. Export as MP4 or GIF. Rust + Dioxus desktop, macOS 15+ and
 Windows 10 2004+ (Windows not yet run on a real machine; see Platforms).
 
-Built on the same layout as Splitter: a pure model crate, a platform crate behind a command
+Built on the same layout as TrackCut: a pure model crate, a platform crate behind a command
 thread, and a thin UI.
 
 ## Layout
@@ -25,18 +25,18 @@ Dependencies point one way: `app → capture/export → render → core`.
 ## Run
 
 ```bash
-cargo run -p small-video
+cargo run -p polishcast
 ```
 
-Click Small Video's icon in the menu bar and **Start Recording** (or press **⌘⇧2**, or
+Click Polishcast's icon in the menu bar and **Start Recording** (or press **⌘⇧2**, or
 **Record** in the window); the menu bar shows **● 0:12** while recording. Same again to stop.
 
 The app icon is `crates/app/assets/icon.svg` (rendered to `icon.png` at 1024 px with
-`rsvg-convert -w 1024 -h 1024 icon.svg -o icon.png`): the Splitter / GitAgent / ais-* family
+`rsvg-convert -w 1024 -h 1024 icon.svg -o icon.png`): the TrackCut / GitAgent / ais-* family
 look in rose. `tray.svg` is its mark alone, rendered at 44 px high to `tray.png`, which macOS
 uses as a template image in the menu bar.
 
-Each take is a folder in `~/Movies/Small Video/<date time>/`:
+Each take is a folder in `~/Movies/Polishcast/<date time>/`:
 
 | File | What |
 |---|---|
@@ -58,7 +58,7 @@ A recording stops by itself after 2 hours, at 20 GB, or when the disk has less t
 The cursor is left out of the recording on purpose: it's redrawn from `events.json`, smoothed
 and scaled, and the camera follows it. A ring spreads from it at each click, and it fades out
 after 1.5 s at rest and back in just before it moves (`core/src/cursor.rs`; both are style
-settings). Small Video's own windows are excluded from the capture.
+settings). Polishcast's own windows are excluded from the capture.
 
 ### What to record
 
@@ -84,13 +84,13 @@ the video plays, so the preview has no layout math of its own and matches the ex
 - Click a zoom to edit its start, end, zoom and focus; **⌫** deletes it, **Esc** deselects
 - **⌘Z / ⌘⇧Z** undo and redo; every change is saved to `project.json`
 
-The video is served to the web view by a small HTTP server on 127.0.0.1 (from Splitter), under
+The video is served to the web view by a small HTTP server on 127.0.0.1 (from TrackCut), under
 a random token, with the app's own protocol as a fallback.
 
 ### Blanks
 
 **Cut the pauses** in the editor's Blanks panel leaves the silences out of the video. The
-detection is Splitter's (`core/src/blanks.rs`, from `splitter-core`'s `detect.rs`): the sound's
+detection is TrackCut's (`core/src/blanks.rs`, from `trackcut-core`'s `detect.rs`): the sound's
 RMS level per 50 ms window (measured once by ffmpeg, kept as `loudness.json`), runs quieter
 than the threshold (−45 dB) and longer than the minimum pause (1 s) are cut, less 0.25 s on each
 side next to speech. Cuts stay in recording time; zooms and the cursor aren't touched. The
@@ -110,8 +110,8 @@ encodes them with VideoToolbox (hardware H.264, ~0.1 bit per pixel) and the reco
 as AAC. 12 s of 1080p60 takes about 10 s on an M-series Mac (release build).
 
 Export needs ffmpeg. The app uses its own copy (downloaded on first use into its data folder's
-`tools/`, checked against its published SHA-256, as in Splitter), or else one on the PATH, in
-Homebrew's folders or in Splitter's tools folder.
+`tools/`, checked against its published SHA-256, as in TrackCut), or else one on the PATH, in
+Homebrew's folders or in TrackCut's tools folder.
 
 ### Permissions
 
@@ -133,7 +133,7 @@ Pointer position and clicks are polled, which needs no Accessibility permission.
 | Tray icon | template image | colour icon | colour icon |
 | Export, ffmpeg | VideoToolbox; ffmpeg fetched on first use | libx264; ffmpeg fetched on first use | same |
 
-The Windows backend follows Splitter's patterns (ffmpeg installer, no console windows, the
+The Windows backend follows TrackCut's patterns (ffmpeg installer, no console windows, the
 icon embedded by `build.rs`, a blocking `check-windows` CI job). It type-checks and passes
 clippy for `x86_64-pc-windows-msvc`, but hasn't been run on Windows yet. Things to verify on
 a first run: the yellow capture border is hidden (Windows 11 only), the microphone is in sync,
@@ -144,10 +144,10 @@ other apps' pointer positions can't be read, which the redrawn cursor depends on
 
 ## Development
 
-- `SMALL_VIDEO_LIBRARY=/some/folder cargo run -p small-video` uses another folder of takes.
-- `cargo run -p small-video-capture --example record -- /tmp/take 3` records 3 s without the
+- `POLISHCAST_LIBRARY=/some/folder cargo run -p polishcast` uses another folder of takes.
+- `cargo run -p polishcast-capture --example record -- /tmp/take 3` records 3 s without the
   app and prints every capture event.
-- `cargo run --release -p small-video-export --example export -- <take dir> out.mp4 1920 60`
+- `cargo run --release -p polishcast-export --example export -- <take dir> out.mp4 1920 60`
   exports without the app; `--example compact -- <screen.mov>` compacts a recording.
 - The `record` example takes `SV_FPS`, `SV_CODEC` (h264/hevc) and `SV_MAX_WIDTH`.
 - Screenshots of the window with `screencapture -l` show the video black (it's on a hardware
@@ -155,7 +155,7 @@ other apps' pointer positions can't be read, which the redrawn cursor depends on
 
 ## Releasing
 
-Same pipeline as Splitter and the ais-* apps:
+Same pipeline as TrackCut and the ais-* apps:
 
 - **Release notes**: every user-visible change gets a bullet under `## [Unreleased]` in
   `CHANGELOG.md` in the same PR (rules in `CLAUDE.md`); `release-notes.yml` fails a PR that
@@ -165,7 +165,7 @@ Same pipeline as Splitter and the ais-* apps:
   tags and pushes. Or Actions → Release → Run workflow.
 - **`release.yml`** (on `v*` tags) builds a signed, notarized `.dmg` (Apple Silicon, macOS 15+)
   and a signed Inno Setup installer (`installer/installer.iss`), publishes them with
-  `latest.json` and `releases.json` to mayorana.ch/downloads/small-video, and creates the
+  `latest.json` and `releases.json` to mayorana.ch/downloads/polishcast, and creates the
   GitHub Release from the changelog. No Linux build: recording isn't supported there.
 - **Secrets** (Settings → Secrets and variables → Actions), each group all-or-nothing:
   - macOS signing: `MACOS_SIGNING_IDENTITY`, `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PWD`,
@@ -176,7 +176,7 @@ Same pipeline as Splitter and the ais-* apps:
     Without them the installer ships unsigned.
   - Publishing: `DIST_SSH_KEY`, `DIST_SSH_HOST`, `DIST_SSH_USER`, `DIST_SSH_KNOWN_HOSTS`, and
     the `DIST_DEST_ROOT` variable. Required on the main repository; the server needs a
-    `small-video/` folder under the root.
+    `polishcast/` folder under the root.
 - The macOS bundle identifier `ch.mayorana.small-video` must never change: macOS ties the
   Screen Recording and Microphone permissions to it.
 - `.githooks/pre-commit` formats staged Rust files; enable it once per clone with
@@ -205,7 +205,7 @@ end; they pass without checking anything when ffmpeg isn't installed.
 
 ## Licence
 
-Source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE), like Splitter.
+Source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE), like TrackCut.
 
 - **Free** for personal use, learning, research and hobby projects, and for
   charities, schools, universities and government institutions.

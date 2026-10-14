@@ -9,7 +9,7 @@ use crate::{Codec, Event, Options, Take};
 use anyhow::{anyhow, bail, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
-use small_video_core::take;
+use polishcast_core::take;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};

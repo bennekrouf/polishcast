@@ -1,5 +1,5 @@
 //! ffmpeg, installed into the app's data folder on first use so nothing has to be installed by
-//! hand (export and compacting need it). Taken from Splitter's installer: a static GPL build
+//! hand (export and compacting need it). Taken from TrackCut's installer: a static GPL build
 //! with x264, yt-dlp's own builds on Windows and Martin Riedl's on macOS and Linux (FFmpeg
 //! publishes no binaries itself), checked against the SHA-256 sum published with each.
 
@@ -13,7 +13,7 @@ const FFMPEG_WINDOWS: &str = "https://github.com/yt-dlp/FFmpeg-Builds/releases/l
 const FFMPEG_UNIX: &str = "https://ffmpeg.martin-riedl.de";
 
 /// %LOCALAPPDATA%\Small Video\tools, ~/Library/Application Support/Small Video/tools,
-/// ~/.local/share/Small Video/tools.
+/// ~/.local/share/Small Video/tools (named after the app before it was Polishcast).
 pub fn dir() -> PathBuf {
     dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join("Small Video").join("tools")
 }
@@ -196,7 +196,7 @@ mod tests {
     }
 
     /// Needs the network; installs ffmpeg into the app's real tools folder on first run.
-    /// `cargo test -p small-video-export -- --ignored installs_ffmpeg`
+    /// `cargo test -p polishcast-export -- --ignored installs_ffmpeg`
     #[test]
     #[ignore]
     fn installs_ffmpeg_with_x264() {

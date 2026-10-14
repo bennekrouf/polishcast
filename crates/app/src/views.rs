@@ -8,9 +8,9 @@ use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon, TrayIconBuilder};
 use dioxus::desktop::{use_global_shortcut, use_muda_event_handler, use_wry_event_handler, window};
 use dioxus::prelude::*;
-use small_video_capture::{Area, Event, Options, Recorder, Source, WindowInfo};
-use small_video_core::take;
-use small_video_export::compact::compact;
+use polishcast_capture::{Area, Event, Options, Recorder, Source, WindowInfo};
+use polishcast_core::take;
+use polishcast_export::compact::compact;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -47,13 +47,13 @@ struct Tray {
 impl Tray {
     fn new() -> Self {
         let record = MenuItem::new("Start Recording", true, None);
-        let show = MenuItem::new("Show Small Video", true, None);
+        let show = MenuItem::new("Show Polishcast", true, None);
         let menu = Menu::new();
         let _ = menu.append_items(&[&record, &show, &PredefinedMenuItem::separator(), &PredefinedMenuItem::quit(None)]);
         let mut builder = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(true)
-            .with_tooltip("Small Video")
+            .with_tooltip("Polishcast")
             .with_icon_as_template(cfg!(target_os = "macos"));
         if let Some(icon) = crate::decode_png(TRAY_PNG, 44).and_then(|(rgba, w, h)| Icon::from_rgba(rgba, w, h).ok()) {
             builder = builder.with_icon(icon);
@@ -119,7 +119,7 @@ pub fn App() -> Element {
     let mut chosen_window = use_signal(|| Option::<u32>::None);
     let refresh_windows = move || {
         spawn(async move {
-            if let Ok(list) = tokio::task::spawn_blocking(small_video_capture::windows).await {
+            if let Ok(list) = tokio::task::spawn_blocking(polishcast_capture::windows).await {
                 if chosen_window.peek().is_some_and(|id| !list.iter().any(|w| w.id == id)) {
                     chosen_window.set(None);
                 }
@@ -297,7 +297,7 @@ pub fn App() -> Element {
         if let Some(info) = update() {
             div { class: "update-banner",
                 span { class: "update-banner-text",
-                    "Small Video "
+                    "Polishcast "
                     strong { "{info.latest_version}" }
                     " is available (you have {env!(\"CARGO_PKG_VERSION\")})."
                 }
@@ -326,7 +326,7 @@ pub fn App() -> Element {
             nav { class: "sidebar", hidden: !sidebar_open(),
                 header {
                     h1 {
-                        "Small Video"
+                        "Polishcast"
                         // Which build is running, for bug reports and support.
                         span { class: "app-version", {concat!("v", env!("CARGO_PKG_VERSION"))} }
                     }
@@ -348,10 +348,10 @@ pub fn App() -> Element {
                 {
                     let mut open = pro.open;
                     let (label, title) = match *pro.status.read() {
-                        crate::licence::Status::Pro(_) => ("Pro \u{2713}", "Small Video Pro is active on this computer"),
+                        crate::licence::Status::Pro(_) => ("Pro \u{2713}", "Polishcast Pro is active on this computer"),
                         crate::licence::Status::Renew(_) => ("Renew Pro\u{2026}", "Your Pro updates ended before this version"),
                         crate::licence::Status::Unavailable => ("Pro", "This build exports every take"),
-                        crate::licence::Status::Free => ("Get Pro\u{2026}", "Buy Small Video Pro, or paste your licence key"),
+                        crate::licence::Status::Free => ("Get Pro\u{2026}", "Buy Polishcast Pro, or paste your licence key"),
                     };
                     rsx! {
                         button { class: "pro-button", title: "{title}", onclick: move |_| open.set(Some(None)), "{label}" }
@@ -366,9 +366,9 @@ pub fn App() -> Element {
                 }
                 p { class: "hint",
                     if shortcut.is_ok() {
-                        "{platform::SHORTCUT_LABEL} or Small Video's icon in the {TRAY_PLACE} records from any app. Its windows are left out."
+                        "{platform::SHORTCUT_LABEL} or Polishcast's icon in the {TRAY_PLACE} records from any app. Its windows are left out."
                     } else {
-                        "Small Video's icon in the {TRAY_PLACE} records from any app. Its windows are left out."
+                        "Polishcast's icon in the {TRAY_PLACE} records from any app. Its windows are left out."
                     }
                 }
                 if let Some(e) = error() {
@@ -489,7 +489,7 @@ fn RecordSettings(
     ];
     rsx! {
         div { class: "record-settings",
-            if small_video_capture::RECORDS_WINDOWS_AND_AREAS {
+            if polishcast_capture::RECORDS_WINDOWS_AND_AREAS {
                 div { class: "segmented",
                     for &(kind, name, tip) in sources {
                         button {
@@ -525,7 +525,7 @@ fn RecordSettings(
                     }
                 }
             }
-            if small_video_capture::RECORDS_SYSTEM_AUDIO {
+            if polishcast_capture::RECORDS_SYSTEM_AUDIO {
                 label { class: "check",
                     input {
                         r#type: "checkbox",
@@ -540,7 +540,7 @@ fn RecordSettings(
     }
 }
 
-/// Asks before moving a take to the Trash: Enter confirms, Esc cancels (as in Splitter).
+/// Asks before moving a take to the Trash: Enter confirms, Esc cancels (as in TrackCut).
 #[component]
 fn DeleteDialog(dir: PathBuf, on_close: EventHandler<()>, on_confirm: EventHandler<PathBuf>) -> Element {
     let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();

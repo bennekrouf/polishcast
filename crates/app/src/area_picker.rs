@@ -5,7 +5,7 @@
 use dioxus::desktop::tao::monitor::MonitorHandle;
 use dioxus::desktop::{window, Config, LogicalPosition, LogicalSize, WindowBuilder, WindowCloseBehaviour};
 use dioxus::prelude::*;
-use small_video_capture::Area;
+use polishcast_capture::Area;
 use std::sync::mpsc::Sender;
 
 const CSS: &str = r#"
@@ -71,7 +71,7 @@ fn display_under_pointer() -> (f64, f64, f64, f64) {
         let (p, s) = (m.position().to_logical::<f64>(k), m.size().to_logical::<f64>(k));
         (p.x, p.y, s.width, s.height)
     };
-    let at = small_video_capture::pointer_location();
+    let at = polishcast_capture::pointer_location();
     main.window
         .available_monitors()
         .map(|m| rect(&m))

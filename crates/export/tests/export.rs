@@ -1,8 +1,8 @@
 //! End to end: a generated take through ffmpeg, the compositor and back. Skipped (passes) when
 //! ffmpeg isn't installed.
 
-use small_video_core::{take, Button, Click, CursorSample, EventLog, Project};
-use small_video_export::{export, ffmpeg, Format, Progress, Settings};
+use polishcast_core::{take, Button, Click, CursorSample, EventLog, Project};
+use polishcast_export::{export, ffmpeg, Format, Progress, Settings};
 use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
@@ -40,7 +40,7 @@ fn exports_video_with_sound() {
         return;
     };
     let ffprobe = ffmpeg.with_file_name("ffprobe");
-    let dir = std::env::temp_dir().join(format!("small-video-export-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("polishcast-export-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     make_take(&dir, &ffmpeg);
 
@@ -65,12 +65,12 @@ fn cancelling_leaves_no_file() {
     let Some(ffmpeg) = ffmpeg() else {
         return;
     };
-    let dir = std::env::temp_dir().join(format!("small-video-cancel-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("polishcast-cancel-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     make_take(&dir, &ffmpeg);
     let out = dir.join("out.mp4");
     let err = export(&dir, &out, Settings::default(), &Progress::default(), &AtomicBool::new(true)).unwrap_err();
-    assert!(err.is::<small_video_export::Cancelled>());
+    assert!(err.is::<polishcast_export::Cancelled>());
     assert!(!out.exists());
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -81,7 +81,7 @@ fn compacting_shrinks_and_keeps_sound_and_length() {
         return;
     };
     let ffprobe = ffmpeg.with_file_name("ffprobe");
-    let dir = std::env::temp_dir().join(format!("small-video-compact-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("polishcast-compact-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     // A wasteful recording, like ScreenCaptureKit's: a near-still picture at a high bitrate.
     let file = dir.join(take::SCREEN);
@@ -95,7 +95,7 @@ fn compacting_shrinks_and_keeps_sound_and_length() {
     assert!(status.success());
     let before = std::fs::metadata(&file).unwrap().len();
 
-    let after = small_video_export::compact::compact(&file).unwrap();
+    let after = polishcast_export::compact::compact(&file).unwrap();
     assert!(after < before / 2, "{before} → {after}");
     assert_eq!(std::fs::metadata(&file).unwrap().len(), after);
     if ffprobe.is_file() {
@@ -113,7 +113,7 @@ fn blanks_are_cut_from_picture_and_sound() {
         return;
     };
     let ffprobe = ffmpeg.with_file_name("ffprobe");
-    let dir = std::env::temp_dir().join(format!("small-video-blanks-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("polishcast-blanks-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     // 9 s: a tone, 3 s of silence (3–6 s), the tone again.
     let status = Command::new(&ffmpeg)
@@ -125,10 +125,10 @@ fn blanks_are_cut_from_picture_and_sound() {
         .unwrap();
     assert!(status.success());
 
-    let loudness = small_video_export::sound::loudness(&ffmpeg, &dir.join(take::SCREEN)).unwrap().unwrap();
+    let loudness = polishcast_export::sound::loudness(&ffmpeg, &dir.join(take::SCREEN)).unwrap().unwrap();
     assert!((loudness.db.len() as f64 * loudness.window - 9.0).abs() < 0.2, "{} windows", loudness.db.len());
-    let params = small_video_core::BlankParams::default();
-    let cuts = small_video_core::blanks::detect(&loudness, 9.0, &params);
+    let params = polishcast_core::BlankParams::default();
+    let cuts = polishcast_core::blanks::detect(&loudness, 9.0, &params);
     assert_eq!(cuts.len(), 1, "{cuts:?}");
     // The 3 s silence less the 0.25 s margins (within a window of the AAC edges).
     assert!((cuts[0].start - 3.25).abs() < 0.1 && (cuts[0].end - 5.75).abs() < 0.1, "{cuts:?}");
@@ -157,8 +157,8 @@ fn blanks_are_cut_from_picture_and_sound() {
         assert_eq!(durations.lines().count(), 2, "{durations}");
     }
     // What's left is the tone, with no pause long enough to cut.
-    let after = small_video_export::sound::loudness(&ffmpeg, &out).unwrap().unwrap();
-    assert!(small_video_core::blanks::detect(&after, expected, &params).is_empty(), "a silence is left");
+    let after = polishcast_export::sound::loudness(&ffmpeg, &out).unwrap().unwrap();
+    assert!(polishcast_core::blanks::detect(&after, expected, &params).is_empty(), "a silence is left");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -168,7 +168,7 @@ fn a_faster_speed_shortens_picture_and_sound() {
         return;
     };
     let ffprobe = ffmpeg.with_file_name("ffprobe");
-    let dir = std::env::temp_dir().join(format!("small-video-speed-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("polishcast-speed-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     // 6 s of a 440 Hz tone, with 3 s of silence (3–6 s) to cut as well.
     let status = Command::new(&ffmpeg)
@@ -185,7 +185,7 @@ fn a_faster_speed_shortens_picture_and_sound() {
         project.speed = speed;
         if cut {
             project.blanks = Some(Default::default());
-            project.cuts = vec![small_video_core::Cut { start: 3.25, end: 5.75, keep: false }];
+            project.cuts = vec![polishcast_core::Cut { start: 3.25, end: 5.75, keep: false }];
         }
         project.save(&dir.join(take::PROJECT)).unwrap();
         let expected = project.video_duration();
@@ -212,7 +212,7 @@ fn a_faster_speed_shortens_picture_and_sound() {
             assert!((frames - expected * 30.0).abs() <= 2.0, "{speed}×: {frames} frames for {expected:.2} s");
         }
         // The sound is still there from the start (atempo keeps its pitch; this doesn't measure it).
-        let after = small_video_export::sound::loudness(&ffmpeg, &out).unwrap().unwrap();
+        let after = polishcast_export::sound::loudness(&ffmpeg, &out).unwrap().unwrap();
         let loud = after.db.iter().take((1.0 / speed / after.window) as usize).all(|d| *d > -20.0);
         assert!(loud, "{speed}×: the tone's start is missing");
     }
@@ -225,7 +225,7 @@ fn exports_a_looping_gif() {
         return;
     };
     let ffprobe = ffmpeg.with_file_name("ffprobe");
-    let dir = std::env::temp_dir().join(format!("small-video-gif-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("polishcast-gif-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     make_take(&dir, &ffmpeg);
     let out = dir.join("out.gif");
@@ -246,7 +246,7 @@ fn a_picture_background_and_a_removed_clip_export() {
         return;
     };
     let ffprobe = ffmpeg.with_file_name("ffprobe");
-    let dir = std::env::temp_dir().join(format!("small-video-picture-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("polishcast-picture-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     make_take(&dir, &ffmpeg);
     let status = Command::new(&ffmpeg)
@@ -256,7 +256,7 @@ fn a_picture_background_and_a_removed_clip_export() {
         .unwrap();
     assert!(status.success());
     let mut p = Project::load(&dir.join(take::PROJECT)).unwrap();
-    p.style.background = small_video_core::project::Background::Image("background.png".into());
+    p.style.background = polishcast_core::project::Background::Image("background.png".into());
     p.splits = vec![1.0];
     p.removed = vec![(1.0, 2.0)];
     p.save(&dir.join(take::PROJECT)).unwrap();

@@ -1,6 +1,6 @@
 //! Blank cutting: stretches where nothing is said, left out of the video.
 //!
-//! Detection is Splitter's (`splitter-core/src/detect.rs`): the loudness track is the RMS level
+//! Detection is TrackCut's (`trackcut-core/src/detect.rs`): the loudness track is the RMS level
 //! in dBFS per fixed window, a run of windows below the threshold that lasts long enough is
 //! a silence, and a margin is kept next to the sound so words aren't clipped. Here a silence
 //! becomes a cut instead of a split between tracks.
@@ -29,7 +29,7 @@ pub struct BlankParams {
 
 impl Default for BlankParams {
     fn default() -> Self {
-        // Splitter's threshold; a shorter pause than its 1.5 s, since this is speech.
+        // TrackCut's threshold; a shorter pause than its 1.5 s, since this is speech.
         Self { threshold_db: -45.0, min_pause_secs: 1.0, margin_secs: 0.25 }
     }
 }
