@@ -388,9 +388,11 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                             class: if selection == Some(i) { "zoom selected" } else { "zoom" },
                             left: "{z.start / duration * 100.0}%",
                             width: "{(z.end - z.start) / duration * 100.0}%",
+                            // A second click on the selected zoom deselects it.
                             onclick: move |_| {
                                 selected_clip.set(None);
-                                selected.set(Some(i));
+                                let again = *selected.peek() == Some(i);
+                                selected.set(if again { None } else { Some(i) });
                             },
                             "{z.scale:.1}×"
                         }
