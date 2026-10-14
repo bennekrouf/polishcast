@@ -16,6 +16,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Fixed
+
+- A take that macOS was slow to finish saving, such as a long window
+  recording, no longer opens half-written with a "Compacting failed … moov atom
+  not found" message. Polishcast now waits until the file is complete before
+  opening and shrinking it.
 ## [0.1.10] - 2026-10-14
 
 ### Added
