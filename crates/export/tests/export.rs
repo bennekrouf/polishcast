@@ -342,3 +342,53 @@ fn music_plays_at_its_moments_under_the_voice() {
     assert!(band_db(&ffmpeg, &out, 440, (0.0, 1.0)) > -40.0, "the voice is still there");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn music_is_lowered_while_the_voice_speaks() {
+    let Some(ffmpeg) = ffmpeg() else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("polishcast-duck-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // A voice (440 Hz) for the first second of three, then silence; music (1 kHz) throughout.
+    let status = Command::new(&ffmpeg)
+        .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x200:rate=30:duration=3"])
+        .args(["-f", "lavfi", "-i", "aevalsrc='if(lt(t,1),0.5*sin(2*PI*440*t),0)':s=48000:d=3"])
+        .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"])
+        .arg(dir.join(take::SCREEN))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let status = Command::new(&ffmpeg)
+        .args(["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=1000:duration=10"])
+        .arg(dir.join("music-1.wav"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let mut project = Project::new(3.0, 320, 200, &EventLog::default());
+    project.music = vec![polishcast_core::music::Music {
+        file: "music-1.wav".into(),
+        name: "Tone".into(),
+        start: 0.0,
+        end: 3.0,
+        from: 0.0,
+        volume: 1.0,
+        fade: 0.0,
+    }];
+    project.duck = Some(0.25);
+    project.save(&dir.join(take::PROJECT)).unwrap();
+
+    let out = dir.join("out.mp4");
+    export(
+        &dir,
+        &out,
+        Settings { format: Format::Mp4, long_side: 320, fps: 30 },
+        &Progress::default(),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let (under, alone) = (band_db(&ffmpeg, &out, 1000, (0.2, 0.8)), band_db(&ffmpeg, &out, 1000, (2.0, 2.8)));
+    // A quarter of the volume is 12 dB down.
+    assert!((alone - under - 12.0).abs() < 2.0, "under the voice {under:.1} dB, alone {alone:.1} dB");
+    std::fs::remove_dir_all(&dir).unwrap();
+}

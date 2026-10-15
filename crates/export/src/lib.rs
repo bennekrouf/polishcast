@@ -171,7 +171,20 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     if let Some(missing) = songs.iter().find(|s| !s.is_file()) {
         bail!("The music file {} is missing from the take's folder.", missing.display());
     }
-    let sound_filter = sound::with_music(voice, tracks, &music, timeline.duration() / speed);
+    // Lowered where the voice speaks, found from the recording's loudness (kept by the editor).
+    let speaking = match scene.project.duck {
+        Some(_) if !music.is_empty() && tracks > 0 => {
+            let kept = std::fs::read(dir.join(take::LOUDNESS)).ok().and_then(|b| serde_json::from_slice(&b).ok());
+            let loudness = match kept {
+                Some(l) => Some(l),
+                None => sound::loudness(&ffmpeg, &screen)?,
+            };
+            loudness.map(|l| scene.project.speaking(&l))
+        }
+        _ => None,
+    };
+    let duck = scene.project.duck.zip(speaking.as_deref());
+    let sound_filter = sound::with_music(voice, tracks, &music, duck, timeline.duration() / speed);
     let total = (timeline.duration() * fps as f64 / speed).ceil() as u64;
     progress.total.store(total.max(1), Ordering::Relaxed);
     progress.done.store(0, Ordering::Relaxed);

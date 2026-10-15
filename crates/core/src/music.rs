@@ -2,7 +2,7 @@
 //! with them when pauses are cut, clips are removed or the speed changes; in between it plays
 //! straight through at its own speed, never cut or sped up.
 
-use crate::blanks::Timeline;
+use crate::blanks::{Loudness, Timeline};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -30,6 +30,53 @@ pub const VOLUME: f32 = 0.3;
 pub const FADE: f64 = 1.0;
 /// Shortest piece worth keeping, in seconds of recording.
 pub const MIN_SECS: f64 = 0.5;
+
+/// The music's volume while the voice speaks, when it's lowered: a fraction of its own.
+pub const DUCK_LEVEL: f32 = 0.3;
+/// Seconds the music takes to go down before the voice and back up after it.
+pub const DUCK_RAMP: f64 = 0.3;
+/// Silences shorter than this, between words, don't bring the music back up.
+const DUCK_HOLD: f64 = 0.8;
+/// Sounds shorter than this (a click, a cough) don't lower it.
+const DUCK_MIN: f64 = 0.15;
+
+/// Where the voice speaks, in video time: louder than `threshold_db`, short gaps bridged, and
+/// apart enough that the music has time to come back up in between.
+pub fn speaking(loudness: &Loudness, threshold_db: f32, timeline: &Timeline, speed: f64) -> Vec<(f64, f64)> {
+    let w = loudness.window;
+    let mut runs: Vec<(f64, f64)> = Vec::new();
+    for (i, &db) in loudness.db.iter().enumerate() {
+        if db < threshold_db {
+            continue;
+        }
+        let (start, end) = (i as f64 * w, (i + 1) as f64 * w);
+        match runs.last_mut() {
+            Some(last) if start - last.1 < DUCK_HOLD => last.1 = end,
+            _ => runs.push((start, end)),
+        }
+    }
+    let mut out: Vec<(f64, f64)> = Vec::new();
+    for (start, end) in runs.into_iter().filter(|(s, e)| e - s >= DUCK_MIN) {
+        let (start, end) = (timeline.to_output(start) / speed, timeline.to_output(end) / speed);
+        if end <= start {
+            continue;
+        }
+        match out.last_mut() {
+            Some(last) if start - last.1 < 2.0 * DUCK_RAMP + DUCK_HOLD / speed => last.1 = end,
+            _ => out.push((start, end)),
+        }
+    }
+    out
+}
+
+/// How far down the music is at video time `t`, from 0 (not at all) to 1 (all the way): it
+/// ramps down before each stretch of `speaking` and back up after it.
+pub fn ducked(speaking: &[(f64, f64)], t: f64) -> f64 {
+    speaking
+        .iter()
+        .map(|&(s, e)| (((t - s) / DUCK_RAMP + 1.0).min((e - t) / DUCK_RAMP + 1.0)).clamp(0.0, 1.0))
+        .fold(0.0, f64::max)
+}
 
 /// Where a piece plays in the video, in video seconds.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -137,6 +184,26 @@ mod tests {
         assert_eq!((music[1].start, music[1].end), (5.0, 10.0), "runs up to the next one");
         assert_eq!(insert(&mut music, song(5.2, 20.0), 20.0), None, "too close to its start");
         assert_eq!(music.len(), 3);
+    }
+
+    #[test]
+    fn the_music_goes_down_while_the_voice_speaks() {
+        // Speech 1–2 s and 2.5–3 s (a short pause), then again at 8–9 s.
+        let mut db = vec![-70.0f32; 200];
+        for i in (20..40).chain(50..60).chain(160..180) {
+            db[i] = -20.0;
+        }
+        // A click: too short to count.
+        db[100] = -10.0;
+        let loudness = Loudness { window: 0.05, db };
+        let timeline = Timeline::new(&[], 10.0);
+        let spans = speaking(&loudness, -45.0, &timeline, 1.0);
+        assert_eq!(spans, vec![(1.0, 3.0), (8.0, 9.0)]);
+        assert_eq!(ducked(&spans, 2.0), 1.0);
+        assert!((ducked(&spans, 0.85) - 0.5).abs() < 1e-9, "half way down before the voice");
+        assert_eq!(ducked(&spans, 5.0), 0.0, "back up in between");
+        // At twice the speed, in video time.
+        assert_eq!(speaking(&loudness, -45.0, &timeline, 2.0), vec![(0.5, 1.5), (4.0, 4.5)]);
     }
 
     #[test]

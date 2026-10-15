@@ -195,6 +195,24 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
             }
         }
     });
+    // Lowering the music under the voice needs the recording's loudness: measured once.
+    use_effect({
+        let dir = dir.clone();
+        move || {
+            if doc.project.read().duck.is_some() && *loudness.peek() == Measure::Unknown {
+                let (dir, mut loudness) = (dir.clone(), loudness);
+                loudness.set(Measure::Measuring);
+                spawn(async move {
+                    loudness.set(match tokio::task::spawn_blocking(move || measure(&dir)).await {
+                        Ok(Ok(Some(l))) => Measure::Ready(Rc::new(l)),
+                        Ok(Ok(None)) => Measure::Silent,
+                        Ok(Err(e)) => Measure::Failed(format!("{e:#}")),
+                        Err(e) => Measure::Failed(e.to_string()),
+                    });
+                });
+            }
+        }
+    });
     use_effect(move || {
         let project = doc.project.read();
         let urls = songs.read();
@@ -209,7 +227,15 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                 Some(v)
             })
             .collect();
-        document::eval(&format!("window.sv && window.sv.setMusic({})", serde_json::Value::from(list)));
+        let duck = match (project.duck, &*loudness.read()) {
+            (Some(level), Measure::Ready(l)) => serde_json::json!({
+                "level": level,
+                "ramp": music::DUCK_RAMP,
+                "spans": project.speaking(l),
+            }),
+            _ => serde_json::Value::Null,
+        };
+        document::eval(&format!("window.sv && window.sv.setMusic({}, {duck})", serde_json::Value::from(list)));
     });
     use_asset_handler("media", move |request, responder| {
         std::thread::spawn(move || responder.respond(media_server::in_app_response(&request)));
@@ -567,7 +593,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                 } else if let Some(clip) = clip_selection {
                     ClipPanel { doc, clip, selected_clip }
                 } else if let Some(i) = music_selection {
-                    MusicPanel { doc, dir: dir.clone(), index: i, selected_music }
+                    MusicPanel { doc, dir: dir.clone(), index: i, selected_music, loudness }
                 } else {
                     StylePanel { doc, dir: dir.clone(), picture_url: picture_url.clone() }
                 }
@@ -855,8 +881,15 @@ fn ZoomPanel(doc: Doc, index: usize, selected: Signal<Option<usize>>) -> Element
 }
 
 #[component]
-fn MusicPanel(doc: Doc, dir: PathBuf, index: usize, selected_music: Signal<Option<usize>>) -> Element {
+fn MusicPanel(
+    doc: Doc,
+    dir: PathBuf,
+    index: usize,
+    selected_music: Signal<Option<usize>>,
+    loudness: Signal<Measure>,
+) -> Element {
     let p = doc.project.read();
+    let duck = p.duck;
     let m = p.music[index].clone();
     let duration = p.duration;
     let plays = p.placed_music().into_iter().find(|pl| pl.index == index).map(|pl| pl.until - pl.at);
@@ -920,6 +953,32 @@ fn MusicPanel(doc: Doc, dir: PathBuf, index: usize, selected_music: Signal<Optio
                 step: 0.1,
                 show: format!("{:.1} s", m.fade),
                 oninput: move |v: f64| doc.live(|p| p.music[index].fade = v),
+            }
+        }
+        label { class: "check", title: "For all the music in this video",
+            input {
+                r#type: "checkbox",
+                checked: duck.is_some(),
+                onchange: move |e| doc.change(|p| p.duck = e.checked().then_some(music::DUCK_LEVEL)),
+            }
+            "Lower the music while I speak"
+        }
+        if let Some(level) = duck {
+            Slider {
+                edits: doc,
+                label: "Under the voice",
+                value: level as f64,
+                min: 0.05,
+                max: 0.8,
+                step: 0.05,
+                show: format!("{:.0}%", level * 100.0),
+                oninput: move |v: f64| doc.live(|p| p.duck = Some(v as f32)),
+            }
+            match loudness() {
+                Measure::Measuring => rsx! { p { class: "hint", "Listening for your voice…" } },
+                Measure::Silent => rsx! { p { class: "hint", "This recording has no sound, so there's no voice to make room for." } },
+                Measure::Failed(e) => rsx! { p { class: "error", "{e}" } },
+                _ => rsx! {},
             }
         }
         div { class: "buttons",

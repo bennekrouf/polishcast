@@ -35,6 +35,10 @@ pub struct Project {
     /// Music under the video, in order, never overlapping.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub music: Vec<Music>,
+    /// While the voice speaks, the music plays at this fraction of its volume; `None` leaves
+    /// it as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duck: Option<f32>,
 }
 
 /// The speeds the editor offers.
@@ -131,6 +135,7 @@ impl Project {
             removed: Vec::new(),
             speed: 1.0,
             music: Vec::new(),
+            duck: None,
         }
     }
 
@@ -160,6 +165,13 @@ impl Project {
     /// Where each piece of music plays in the video.
     pub fn placed_music(&self) -> Vec<Placed> {
         music::place(&self.music, &self.timeline(), self.speed())
+    }
+
+    /// Where the voice speaks in the video, from the recording's loudness, at the level blank
+    /// cutting takes for silence.
+    pub fn speaking(&self, loudness: &crate::Loudness) -> Vec<(f64, f64)> {
+        let threshold = self.blanks.unwrap_or_default().threshold_db;
+        music::speaking(loudness, threshold, &self.timeline(), self.speed())
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {

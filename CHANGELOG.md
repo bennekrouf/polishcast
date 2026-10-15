@@ -28,7 +28,9 @@ user sees in the update prompt should all be accounted for.
   where you want it. Each song starts and stops at moments of the recording, so
   it stays with them when you cut pauses, remove clips or change the speed, and
   it always plays at its own speed. Click a song on the timeline to set its
-  volume, fades and where in the song it begins, or to swap the song.
+  volume, fades and where in the song it begins, or to swap the song. Turn on
+  **Lower the music while I speak** and it dips under your voice, in the preview
+  as in the export.
 
 ### Fixed
 

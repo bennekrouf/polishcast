@@ -3,7 +3,7 @@
 
 use crate::tools;
 use anyhow::{bail, Context, Result};
-use polishcast_core::music::Placed;
+use polishcast_core::music::{self, Placed};
 use polishcast_core::{Loudness, Timeline};
 use std::io::Read;
 use std::path::Path;
@@ -119,10 +119,34 @@ pub fn filter(timeline: &Timeline, cutting: bool, speed: f64, tracks: usize) -> 
     }
 }
 
+/// The music's volume over video time `t`, as an ffmpeg expression: `level` of it while the
+/// voice speaks (`speaking`), ramping as [`music::ducked`] does. Only the stretches inside
+/// `music` count.
+fn duck_expr(level: f32, speaking: &[(f64, f64)], music: &[Placed]) -> String {
+    let r = music::DUCK_RAMP;
+    let terms: Vec<String> = speaking
+        .iter()
+        .filter(|&&(s, e)| music.iter().any(|m| s - r < m.until && e + r > m.at))
+        .map(|&(s, e)| format!("clip(min((t-{:.4})/{r},({:.4}-t)/{r}),0,1)", s - r, e + r))
+        .collect();
+    if terms.is_empty() {
+        return "1".into();
+    }
+    // The stretches are apart enough that their ramps never overlap: the sum is at most 1.
+    format!("1-{:.4}*({})", 1.0 - level, terms.join("+"))
+}
+
 /// Adds music under the sound: `voice` is the graph [`filter`] made (`None` when it's used
 /// as is), `tracks` the recording's sound tracks (input 1), and piece `k` of `music` is input
-/// `2 + k`. Produces `[aout]`, `duration` seconds long; `None` without music.
-pub fn with_music(voice: Option<String>, tracks: usize, music: &[Placed], duration: f64) -> Option<String> {
+/// `2 + k`. With `duck`, the music is lowered to that fraction where the voice speaks.
+/// Produces `[aout]`, `duration` seconds long; `None` without music.
+pub fn with_music(
+    voice: Option<String>,
+    tracks: usize,
+    music: &[Placed],
+    duck: Option<(f32, &[(f64, f64)])>,
+    duration: f64,
+) -> Option<String> {
     if music.is_empty() {
         return voice;
     }
@@ -149,16 +173,20 @@ pub fn with_music(voice: Option<String>, tracks: usize, music: &[Placed], durati
             (m.at * 1000.0).round() as u64,
         );
     }
-    let voiced = tracks > 0;
-    let inputs = music.len() + voiced as usize;
-    if voiced {
-        graph += "[voice]";
-    }
     for k in 0..music.len() {
         graph += &format!("[m{k}]");
     }
+    graph += &format!("amix=inputs={}:duration=longest:normalize=0", music.len());
+    if let Some((level, speaking)) = duck {
+        graph += &format!(",volume='{}':eval=frame", duck_expr(level, speaking, music));
+    }
     // The video sets the length: the voice is as long, music alone is padded or cut to it.
-    Some(graph + &format!("amix=inputs={inputs}:duration=longest:normalize=0,apad,atrim=end={duration:.6}[aout]"))
+    let end = format!("apad,atrim=end={duration:.6}[aout]");
+    Some(if tracks > 0 {
+        graph + &format!("[music];[voice][music]amix=inputs=2:duration=first:normalize=0,{end}")
+    } else {
+        graph + &format!(",{end}")
+    })
 }
 
 /// Seconds faded out and in at each cut, so a cut never clicks.
@@ -216,23 +244,37 @@ mod tests {
     #[test]
     fn music_goes_under_the_voice_where_it_plays() {
         let m = Placed { index: 0, at: 2.0, until: 6.0, from: 10.0, volume: 0.3, fade_in: 1.0, fade_out: 1.0 };
-        let g = with_music(None, 1, &[m], 8.0).unwrap();
+        let g = with_music(None, 1, &[m], None, 8.0).unwrap();
         assert!(
             g.starts_with("[1:a:0]aresample=async=1:first_pts=0[voice];[2:a:0]atrim=start=10.000000:duration=4.000000"),
             "{g}"
         );
         assert!(g.contains("afade=t=out:st=3.000000:d=1.000000,volume=0.3000,adelay=delays=2000:all=1[m0];"), "{g}");
+        assert!(g.ends_with("[m0]amix=inputs=1:duration=longest:normalize=0[music];[voice][music]amix=inputs=2:duration=first:normalize=0,apad,atrim=end=8.000000[aout]"), "{g}");
+        // After the voice's own graph, and without a voice.
+        let cut = with_music(Some("[1:a:0]x,y[aout]".into()), 1, &[m], None, 8.0).unwrap();
+        assert!(cut.starts_with("[1:a:0]x,y[voice];"), "{cut}");
+        let alone = with_music(None, 0, &[m], None, 8.0).unwrap();
         assert!(
-            g.ends_with("[voice][m0]amix=inputs=2:duration=longest:normalize=0,apad,atrim=end=8.000000[aout]"),
+            alone.ends_with("[m0]amix=inputs=1:duration=longest:normalize=0,apad,atrim=end=8.000000[aout]"),
+            "{alone}"
+        );
+        assert_eq!(with_music(None, 1, &[], None, 8.0), None);
+        let sudden = Placed { fade_in: 0.0, fade_out: 0.0, ..m };
+        assert!(!with_music(None, 1, &[sudden], None, 8.0).unwrap().contains("afade"));
+    }
+
+    #[test]
+    fn the_music_is_lowered_where_the_voice_speaks() {
+        let m = Placed { index: 0, at: 2.0, until: 6.0, from: 0.0, volume: 1.0, fade_in: 0.0, fade_out: 0.0 };
+        // The second stretch is outside the music: left out of the expression.
+        let speaking = [(3.0, 4.0), (10.0, 11.0)];
+        let g = with_music(None, 1, &[m], Some((0.25, &speaking)), 12.0).unwrap();
+        assert!(
+            g.contains(",volume='1-0.7500*(clip(min((t-2.7000)/0.3,(4.3000-t)/0.3),0,1))':eval=frame[music]"),
             "{g}"
         );
-        // After the voice's own graph, and without a voice.
-        let cut = with_music(Some("[1:a:0]x,y[aout]".into()), 1, &[m], 8.0).unwrap();
-        assert!(cut.starts_with("[1:a:0]x,y[voice];"), "{cut}");
-        assert!(with_music(None, 0, &[m], 8.0).unwrap().contains("[m0]amix=inputs=1:"));
-        let sudden = Placed { fade_in: 0.0, fade_out: 0.0, ..m };
-        assert!(!with_music(None, 1, &[sudden], 8.0).unwrap().contains("afade"));
-        assert_eq!(with_music(None, 1, &[], 8.0), None);
+        assert!(with_music(None, 1, &[m], Some((0.25, &[])), 12.0).unwrap().contains("volume='1'"));
     }
 
     #[test]

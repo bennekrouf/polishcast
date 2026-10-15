@@ -26,10 +26,13 @@
     },
 
     music: [],
+    // Where the voice speaks, to lower the music: {level, ramp, spans} in video time, or null.
+    duck: null,
     // One player per song, by URL.
     songs: new Map(),
-    setMusic(music) {
+    setMusic(music, duck) {
       this.music = music;
+      this.duck = duck || null;
       for (const [url, a] of this.songs) {
         if (!music.some((m) => m.url === url)) {
           a.pause();
@@ -53,7 +56,13 @@
       if (a.readyState >= 1 && (a.paused || Math.abs(a.currentTime - want) > 0.3)) a.currentTime = want;
       const fadeIn = m.fade_in > 0 ? (at - m.at) / m.fade_in : 1;
       const fadeOut = m.fade_out > 0 ? (m.until - at) / m.fade_out : 1;
-      a.volume = Math.max(0, Math.min(1, m.volume * Math.min(fadeIn, fadeOut, 1)));
+      // As music::ducked computes it: down before each stretch the voice speaks, up after it.
+      const d = this.duck;
+      const down = d
+        ? d.spans.reduce((x, [s, e]) => Math.max(x, Math.min(1, Math.max(0, Math.min((at - s) / d.ramp + 1, (e - at) / d.ramp + 1)))), 0)
+        : 0;
+      const duck = d ? 1 - (1 - d.level) * down : 1;
+      a.volume = Math.max(0, Math.min(1, m.volume * duck * Math.min(fadeIn, fadeOut, 1)));
       if (a.paused) a.play().catch(() => {});
     },
     video() {
