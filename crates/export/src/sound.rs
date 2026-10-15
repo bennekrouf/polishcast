@@ -3,6 +3,7 @@
 
 use crate::tools;
 use anyhow::{bail, Context, Result};
+use polishcast_core::music::Placed;
 use polishcast_core::{Loudness, Timeline};
 use std::io::Read;
 use std::path::Path;
@@ -118,6 +119,48 @@ pub fn filter(timeline: &Timeline, cutting: bool, speed: f64, tracks: usize) -> 
     }
 }
 
+/// Adds music under the sound: `voice` is the graph [`filter`] made (`None` when it's used
+/// as is), `tracks` the recording's sound tracks (input 1), and piece `k` of `music` is input
+/// `2 + k`. Produces `[aout]`, `duration` seconds long; `None` without music.
+pub fn with_music(voice: Option<String>, tracks: usize, music: &[Placed], duration: f64) -> Option<String> {
+    if music.is_empty() {
+        return voice;
+    }
+    let mut graph = match voice {
+        Some(g) => format!("{}[voice];", g.strip_suffix("[aout]").unwrap_or(&g)),
+        None if tracks > 0 => format!("{}[voice];", source(1, tracks)),
+        None => String::new(),
+    };
+    for (k, m) in music.iter().enumerate() {
+        let len = m.until - m.at;
+        // A fade of 0 s would be ffmpeg's default length, not none.
+        let fade_in = if m.fade_in > 0.0 { format!(",afade=t=in:d={:.6}", m.fade_in) } else { String::new() };
+        let fade_out = if m.fade_out > 0.0 {
+            format!(",afade=t=out:st={:.6}:d={:.6}", (len - m.fade_out).max(0.0), m.fade_out)
+        } else {
+            String::new()
+        };
+        graph += &format!(
+            "[{}:a:0]atrim=start={:.6}:duration={len:.6},asetpts=PTS-STARTPTS{fade_in}{fade_out},\
+             volume={:.4},adelay=delays={}:all=1[m{k}];",
+            2 + k,
+            m.from,
+            m.volume,
+            (m.at * 1000.0).round() as u64,
+        );
+    }
+    let voiced = tracks > 0;
+    let inputs = music.len() + voiced as usize;
+    if voiced {
+        graph += "[voice]";
+    }
+    for k in 0..music.len() {
+        graph += &format!("[m{k}]");
+    }
+    // The video sets the length: the voice is as long, music alone is padded or cut to it.
+    Some(graph + &format!("amix=inputs={inputs}:duration=longest:normalize=0,apad,atrim=end={duration:.6}[aout]"))
+}
+
 /// Seconds faded out and in at each cut, so a cut never clicks.
 const FADE_SECS: f64 = 0.01;
 
@@ -168,6 +211,28 @@ mod tests {
         assert_eq!(filter(&tl, false, 1.0, 2).unwrap(), format!("{mixed}[aout]"));
         let cut = cut_filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, 2);
         assert!(cut.starts_with(&format!("{mixed},asplit=2[s0][s1];")), "{cut}");
+    }
+
+    #[test]
+    fn music_goes_under_the_voice_where_it_plays() {
+        let m = Placed { index: 0, at: 2.0, until: 6.0, from: 10.0, volume: 0.3, fade_in: 1.0, fade_out: 1.0 };
+        let g = with_music(None, 1, &[m], 8.0).unwrap();
+        assert!(
+            g.starts_with("[1:a:0]aresample=async=1:first_pts=0[voice];[2:a:0]atrim=start=10.000000:duration=4.000000"),
+            "{g}"
+        );
+        assert!(g.contains("afade=t=out:st=3.000000:d=1.000000,volume=0.3000,adelay=delays=2000:all=1[m0];"), "{g}");
+        assert!(
+            g.ends_with("[voice][m0]amix=inputs=2:duration=longest:normalize=0,apad,atrim=end=8.000000[aout]"),
+            "{g}"
+        );
+        // After the voice's own graph, and without a voice.
+        let cut = with_music(Some("[1:a:0]x,y[aout]".into()), 1, &[m], 8.0).unwrap();
+        assert!(cut.starts_with("[1:a:0]x,y[voice];"), "{cut}");
+        assert!(with_music(None, 0, &[m], 8.0).unwrap().contains("[m0]amix=inputs=1:"));
+        let sudden = Placed { fade_in: 0.0, fade_out: 0.0, ..m };
+        assert!(!with_music(None, 1, &[sudden], 8.0).unwrap().contains("afade"));
+        assert_eq!(with_music(None, 1, &[], 8.0), None);
     }
 
     #[test]

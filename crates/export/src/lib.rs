@@ -152,18 +152,26 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     let compositor = Compositor::with_image(&scene, width, height, image.as_ref().map(|i| i.as_ref()));
     let (sw, sh) = source_size(&scene, width, height);
     // Blanks cut: the picture skips them frame by frame, the sound through a filter graph.
-    // Faster than recorded: the recording is read at `fps × speed` and every frame kept is
-    // written at `fps`, and the sound is sped up in the same graph.
+    // Faster than recorded: the recording is read at `fps ÷ speed` (fewer frames per second
+    // of recording) and every frame kept is written at `fps`, and the sound is sped up in the
+    // same graph.
     let timeline = scene.project.timeline();
     let speed = scene.project.speed();
-    let read_fps = fps as f64 * speed;
+    let read_fps = fps as f64 / speed;
     let cutting = timeline.parts.len() != 1 || timeline.duration() < scene.project.duration;
     let gif = settings.format == Format::Gif;
     let tracks = if gif { 0 } else { sound::audio_tracks(&ffmpeg, &screen)? };
-    let sound_filter = match sound::filter(&timeline, cutting, speed, tracks) {
+    let voice = match sound::filter(&timeline, cutting, speed, tracks) {
         Some(graph) if tracks > 0 => Some(graph),
         _ => None,
     };
+    // Music, placed in video time: inputs after the recording.
+    let music = if gif { Vec::new() } else { scene.project.placed_music() };
+    let songs: Vec<PathBuf> = music.iter().map(|m| dir.join(&scene.project.music[m.index].file)).collect();
+    if let Some(missing) = songs.iter().find(|s| !s.is_file()) {
+        bail!("The music file {} is missing from the take's folder.", missing.display());
+    }
+    let sound_filter = sound::with_music(voice, tracks, &music, timeline.duration() / speed);
     let total = (timeline.duration() * fps as f64 / speed).ceil() as u64;
     progress.total.store(total.max(1), Ordering::Relaxed);
     progress.done.store(0, Ordering::Relaxed);
@@ -193,9 +201,11 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
         // changed rectangle of each frame stored: small files that keep text readable.
         encoder.args(["-filter_complex", GIF_FILTER, "-loop", "0"]);
     } else {
+        encoder.arg("-i").arg(&screen);
+        for song in &songs {
+            encoder.arg("-i").arg(song);
+        }
         encoder
-            .arg("-i")
-            .arg(&screen)
             .args(if let Some(graph) = &sound_filter {
                 vec!["-filter_complex".to_string(), graph.clone(), "-map".into(), "0:v:0".into()]
                     .into_iter()
@@ -247,7 +257,7 @@ fn pump(
     timeline: &Timeline,
     compositor: &Compositor,
     (sw, sh): (u32, u32),
-    // The rate the recording is read at: the export's, times the playback speed.
+    // The rate the recording is read at: the export's, divided by the playback speed.
     read_fps: f64,
     progress: &Progress,
     cancel: &AtomicBool,

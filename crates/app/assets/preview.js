@@ -6,6 +6,9 @@
 // #sv-timeline, #sv-playhead, #sv-time. Rust never sets the style properties this script owns.
 //
 // Messages to Rust, through `sv.send`: {kind: "tick", t, playing} and {kind: "key", key, cmd, shift}.
+//
+// Music (`setMusic`) is placed in video time by Rust; this script only plays each piece while
+// the video is in it, kept in step with the video.
 (() => {
   if (window.sv) return;
   const STRIDE = 11;
@@ -20,6 +23,38 @@
 
     setTrack(track) {
       this.track = track;
+    },
+
+    music: [],
+    // One player per song, by URL.
+    songs: new Map(),
+    setMusic(music) {
+      this.music = music;
+      for (const [url, a] of this.songs) {
+        if (!music.some((m) => m.url === url)) {
+          a.pause();
+          this.songs.delete(url);
+        }
+      }
+    },
+    // `at` is video time: the music plays at its own speed whatever the video's.
+    playMusic(at, playing) {
+      const m = playing ? this.music.find((m) => at >= m.at && at < m.until) : null;
+      for (const [url, a] of this.songs) if ((!m || url !== m.url) && !a.paused) a.pause();
+      if (!m) return;
+      let a = this.songs.get(m.url);
+      if (!a) {
+        a = new Audio(m.url);
+        a.preload = "auto";
+        this.songs.set(m.url, a);
+      }
+      const want = m.from + (at - m.at);
+      // Seeking costs a gap in the sound: only when it has drifted, or on starting.
+      if (a.readyState >= 1 && (a.paused || Math.abs(a.currentTime - want) > 0.3)) a.currentTime = want;
+      const fadeIn = m.fade_in > 0 ? (at - m.at) / m.fade_in : 1;
+      const fadeOut = m.fade_out > 0 ? (m.until - at) / m.fade_out : 1;
+      a.volume = Math.max(0, Math.min(1, m.volume * Math.min(fadeIn, fadeOut, 1)));
+      if (a.paused) a.play().catch(() => {});
     },
     video() {
       return document.getElementById("sv-video");
@@ -148,6 +183,7 @@
         if (label) label.textContent = clock((time - cutBefore) / speed);
 
         const playing = !v.paused;
+        this.playMusic((time - cutBefore) / speed, playing && !v.seeking);
         if (this.send && (playing !== this.sent.playing || Math.abs(time - this.sent.t) > 0.1)) {
           this.sent = { t: time, playing };
           this.send({ kind: "tick", t: time, playing });
@@ -165,7 +201,7 @@
 
   // Click or drag on the timeline (outside a zoom, cut or clip) to seek.
   document.addEventListener("pointerdown", (e) => {
-    if (!e.target.closest("#sv-timeline") || e.target.closest(".zoom, .cut, .clip")) return;
+    if (!e.target.closest("#sv-timeline") || e.target.closest(".zoom, .cut, .clip, .music")) return;
     sv.scrubbing = true;
     sv.scrub(e);
   });

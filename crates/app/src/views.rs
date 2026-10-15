@@ -111,6 +111,8 @@ pub fn App() -> Element {
     let mut confirm_delete = use_signal(|| Option::<PathBuf>::None);
     // The recordings panel on the left; closed, a thin rail keeps Record and a way back.
     let mut sidebar_open = use_signal(|| true);
+    // Its edge being dragged: where the pointer and the edge were when the drag began.
+    let mut resizing = use_signal(|| Option::<(f64, f64)>::None);
     let (compacted_tx, compacted_rx) = use_hook(|| {
         let (tx, rx) = mpsc::channel::<(PathBuf, Result<u64, String>)>();
         (tx, Rc::new(rx))
@@ -374,7 +376,10 @@ pub fn App() -> Element {
                     }
                 }
             }
-            nav { class: "sidebar", hidden: !sidebar_open(),
+            nav {
+                class: "sidebar",
+                hidden: !sidebar_open(),
+                width: "{settings.read().sidebar_width()}px",
                 header {
                     h1 {
                         "Polishcast"
@@ -482,6 +487,35 @@ pub fn App() -> Element {
                             }
                         }
                     }
+                }
+            }
+            if sidebar_open() {
+                div {
+                    class: "sidebar-resizer",
+                    title: "Drag to resize · double-click for the default width",
+                    onmousedown: move |e: MouseEvent| {
+                        e.prevent_default();
+                        resizing.set(Some((e.client_coordinates().x, settings.peek().sidebar_width())));
+                    },
+                    ondoubleclick: move |_| {
+                        settings.write().sidebar_width = None;
+                        settings.peek().save();
+                    },
+                }
+            }
+            // While the edge is dragged, a sheet over the whole window follows the pointer, so
+            // the drag keeps going over the video and the timeline.
+            if let Some((from_x, from_width)) = resizing() {
+                div {
+                    class: "resize-sheet",
+                    onmousemove: move |e: MouseEvent| {
+                        let w = from_width + e.client_coordinates().x - from_x;
+                        settings.write().sidebar_width = Some(w.clamp(crate::settings::SIDEBAR_MIN, crate::settings::SIDEBAR_MAX));
+                    },
+                    onmouseup: move |_| {
+                        resizing.set(None);
+                        settings.peek().save();
+                    },
                 }
             }
             crate::licence::ProDialog {}

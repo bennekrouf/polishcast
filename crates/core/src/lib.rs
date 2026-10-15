@@ -11,6 +11,7 @@ pub mod cursor;
 pub mod events;
 pub mod history;
 pub mod license;
+pub mod music;
 pub mod project;
 pub mod zoom;
 

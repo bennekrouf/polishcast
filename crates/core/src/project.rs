@@ -2,6 +2,7 @@
 
 use crate::blanks::{BlankParams, Cut, Timeline};
 use crate::events::EventLog;
+use crate::music::{self, Music, Placed};
 use crate::zoom::{auto_zoom, AutoZoom, Zoom};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -31,6 +32,9 @@ pub struct Project {
     /// seconds. The sound is sped up with it, at the same pitch.
     #[serde(default = "normal_speed", skip_serializing_if = "is_normal_speed")]
     pub speed: f64,
+    /// Music under the video, in order, never overlapping.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub music: Vec<Music>,
 }
 
 /// The speeds the editor offers.
@@ -126,6 +130,7 @@ impl Project {
             splits: Vec::new(),
             removed: Vec::new(),
             speed: 1.0,
+            music: Vec::new(),
         }
     }
 
@@ -150,6 +155,11 @@ impl Project {
         let removed = self.removed.iter().map(|&(start, end)| Cut { start, end, keep: false });
         let cuts: Vec<Cut> = blanks.iter().copied().chain(removed).collect();
         Timeline::new(&cuts, self.duration)
+    }
+
+    /// Where each piece of music plays in the video.
+    pub fn placed_music(&self) -> Vec<Placed> {
+        music::place(&self.music, &self.timeline(), self.speed())
     }
 
     pub fn load(path: &Path) -> std::io::Result<Self> {

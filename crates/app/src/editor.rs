@@ -9,12 +9,14 @@ use dioxus::prelude::*;
 use polishcast_core::blanks::redetect;
 use polishcast_core::clips;
 use polishcast_core::history::History;
+use polishcast_core::music::{self, Music};
 use polishcast_core::project::{Aspect, Background, SPEEDS};
 use polishcast_core::zoom::{self, Zoom};
 use polishcast_core::{take, BlankParams, EventLog, Loudness, Project};
 use polishcast_export::{Format, Progress, Settings};
 use polishcast_render::{compose, Scene};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -147,6 +149,8 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
     // A clip picked on the timeline (start and end, in recording time); only one of a zoom and
     // a clip is selected at a time.
     let mut selected_clip = use_signal(|| Option::<(f64, f64)>::None);
+    // A piece of music picked on the timeline; likewise exclusive.
+    let mut selected_music = use_signal(|| Option::<usize>::None);
 
     // Serve the recording to the web view (127.0.0.1, or the app's own protocol as a fallback).
     let url = use_hook(|| media_server::publish(&dir.join(take::SCREEN)));
@@ -175,6 +179,37 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                 picture.set(name.and_then(|n| media_server::share(&dir.join(&n)).map(|url| (n, url))));
             }
         }
+    });
+    // The songs, served next to the video by file name, and where each piece plays.
+    let mut songs = use_signal(HashMap::<String, String>::new);
+    use_effect({
+        let dir = dir.clone();
+        move || {
+            let files: Vec<String> = doc.project.read().music.iter().map(|m| m.file.clone()).collect();
+            for file in files {
+                if !songs.peek().contains_key(&file) {
+                    if let Some(url) = media_server::share(&dir.join(&file)) {
+                        songs.write().insert(file, url);
+                    }
+                }
+            }
+        }
+    });
+    use_effect(move || {
+        let project = doc.project.read();
+        let urls = songs.read();
+        let list: Vec<serde_json::Value> = project
+            .placed_music()
+            .into_iter()
+            .filter_map(|m| {
+                let url = urls.get(&project.music[m.index].file)?;
+                let url = if in_app() { media_server::in_app_path(url) } else { url.clone() };
+                let mut v = serde_json::to_value(m).ok()?;
+                v["url"] = url.into();
+                Some(v)
+            })
+            .collect();
+        document::eval(&format!("window.sv && window.sv.setMusic({})", serde_json::Value::from(list)));
     });
     use_asset_handler("media", move |request, responder| {
         std::thread::spawn(move || responder.respond(media_server::in_app_response(&request)));
@@ -238,6 +273,69 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
         selected_clip.set(None);
     });
 
+    // A song chosen: it starts at the playhead (a piece playing there stops).
+    let add_music = use_callback({
+        let dir = dir.clone();
+        move |from: PathBuf| {
+            let mut error = doc.error;
+            let file = match adopt_file(&dir, &from, "music") {
+                Ok(file) => file,
+                Err(e) => return error.set(Some(format!("Can't use that song: {e}"))),
+            };
+            let name = from.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| file.clone());
+            let t = time();
+            let m =
+                Music { file, name, start: t, end: f64::INFINITY, from: 0.0, volume: music::VOLUME, fade: music::FADE };
+            let mut added = None;
+            doc.change(|p| added = music::insert(&mut p.music, m, p.duration));
+            match added {
+                Some(i) => {
+                    selected.set(None);
+                    selected_clip.set(None);
+                    selected_music.set(Some(i));
+                }
+                None => error.set(Some("There's no room for music here: move the playhead.".into())),
+            }
+        }
+    });
+    // M: the music stops at the playhead if it's playing there; otherwise the last song before
+    // it carries on from where it stopped.
+    let toggle_music = use_callback(move |()| {
+        let t = time();
+        let (playing, last) = {
+            let p = doc.project.peek();
+            let last =
+                p.music.iter().enumerate().rev().find(|(_, m)| m.end <= t).or(p.music.iter().enumerate().next_back());
+            let placed = p.placed_music();
+            let last = last.map(|(i, m)| {
+                let played = placed.iter().find(|pl| pl.index == i).map_or(0.0, |pl| pl.until - pl.at);
+                let from = if m.end <= t { m.from + played } else { 0.0 };
+                Music { start: t, end: f64::INFINITY, from, ..m.clone() }
+            });
+            (music::at(&p.music, t), last)
+        };
+        let mut error = doc.error;
+        if let Some(i) = playing {
+            doc.change(|p| {
+                let start = p.music[i].start;
+                if t - start < music::MIN_SECS {
+                    p.music.remove(i);
+                } else {
+                    music::set_bounds(&mut p.music, i, start, t, p.duration);
+                }
+            });
+            selected_music.set(None);
+        } else if let Some(m) = last {
+            let mut added = None;
+            doc.change(|p| added = music::insert(&mut p.music, m, p.duration));
+            if added.is_none() {
+                error.set(Some("There's no room for music here: move the playhead.".into()));
+            }
+        } else {
+            error.set(Some("Choose a song with + Music first.".into()));
+        }
+    });
+
     // Ticks and keys from the preview script.
     use_future(move || async move {
         let mut channel = document::eval("window.sv.send = (m) => dioxus.send(m); await new Promise(() => {});");
@@ -252,6 +350,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     ("z" | "Z", true, true) => doc.redo(),
                     ("z", false, false) => add_zoom(()),
                     ("s", false, false) => split_here(()),
+                    ("m", false, false) => toggle_music(()),
                     ("[", false, _) => trim(true),
                     ("]", false, _) => trim(false),
                     ("Backspace" | "Delete", false, _) => {
@@ -261,6 +360,12 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                                     p.zooms.remove(i);
                                 }
                             });
+                        } else if let Some(i) = selected_music.take() {
+                            doc.change(|p| {
+                                if i < p.music.len() {
+                                    p.music.remove(i);
+                                }
+                            });
                         } else if let Some(clip) = *selected_clip.peek() {
                             doc.change(|p| toggle_clip(p, clip));
                         }
@@ -268,6 +373,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     ("Escape", false, _) => {
                         selected.set(None);
                         selected_clip.set(None);
+                        selected_music.set(None);
                     }
                     _ => {}
                 },
@@ -286,6 +392,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
     let all_clips = clips::clips(&project.splits, project.duration);
     // Likewise a clip whose split was undone.
     let clip_selection = selected_clip().filter(|c| all_clips.contains(c));
+    let music_selection = selected_music().filter(|&i| i < project.music.len());
     let src = match &url {
         Some(url) if in_app() => media_server::in_app_path(url),
         Some(url) => url.clone(),
@@ -360,6 +467,20 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     span { class: "spacer" }
                     button { onclick: move |_| split_here(()), title: "S — then click a clip to remove it", "Split" }
                     button { onclick: move |_| add_zoom(()), title: "Z", "+ Zoom" }
+                    // A song starts at the playhead; M then stops and restarts it as the video plays.
+                    label { class: "button", title: "A song from the playhead. M stops it or starts it again there",
+                        "+ Music"
+                        input {
+                            r#type: "file",
+                            accept: "audio/*,.mp3,.m4a,.wav,.aac,.flac",
+                            hidden: true,
+                            onchange: move |e| {
+                                if let Some(file) = e.files().into_iter().next() {
+                                    add_music(file.path());
+                                }
+                            },
+                        }
+                    }
                     button { onclick: move |_| doc.undo(), title: "{platform::MOD}Z", "Undo" }
                     button { onclick: move |_| doc.redo(), title: "{platform::MOD}Shift+Z", "Redo" }
                 }
@@ -391,10 +512,27 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                             // A second click on the selected zoom deselects it.
                             onclick: move |_| {
                                 selected_clip.set(None);
+                                selected_music.set(None);
                                 let again = *selected.peek() == Some(i);
                                 selected.set(if again { None } else { Some(i) });
                             },
                             "{z.scale:.1}×"
+                        }
+                    }
+                    for (i, m) in project.music.iter().enumerate() {
+                        div {
+                            key: "music-{i}-{m.start}",
+                            class: if music_selection == Some(i) { "music selected" } else { "music" },
+                            left: "{m.start / duration * 100.0}%",
+                            width: "{(m.end.min(duration) - m.start) / duration * 100.0}%",
+                            title: "{m.name}",
+                            onclick: move |_| {
+                                selected.set(None);
+                                selected_clip.set(None);
+                                let again = *selected_music.peek() == Some(i);
+                                selected_music.set(if again { None } else { Some(i) });
+                            },
+                            "♪ {m.name}"
                         }
                     }
                     div { class: "clips",
@@ -411,6 +549,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                                 title: "Click to select this clip; S splits at the playhead",
                                 onclick: move |_| {
                                     selected.set(None);
+                                    selected_music.set(None);
                                     selected_clip.set(Some((start, end)));
                                 },
                             }
@@ -427,6 +566,8 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     ZoomPanel { doc, index: i, selected }
                 } else if let Some(clip) = clip_selection {
                     ClipPanel { doc, clip, selected_clip }
+                } else if let Some(i) = music_selection {
+                    MusicPanel { doc, dir: dir.clone(), index: i, selected_music }
                 } else {
                     StylePanel { doc, dir: dir.clone(), picture_url: picture_url.clone() }
                 }
@@ -449,12 +590,12 @@ fn css_background(b: &Background, picture_url: Option<&str>) -> String {
     }
 }
 
-/// Copies a picture chosen as the background into the take's folder, under a new name each
-/// time (so undo brings back the picture that was there), and returns that name.
-fn adopt_picture(dir: &std::path::Path, from: &std::path::Path) -> std::io::Result<String> {
-    let ext = from.extension().and_then(|e| e.to_str()).unwrap_or("png").to_ascii_lowercase();
+/// Copies a file chosen for the take (a background picture, a song) into its folder, under a
+/// new name each time (so undo brings back the one that was there), and returns that name.
+fn adopt_file(dir: &std::path::Path, from: &std::path::Path, kind: &str) -> std::io::Result<String> {
+    let ext = from.extension().and_then(|e| e.to_str()).unwrap_or("bin").to_ascii_lowercase();
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-    let name = format!("background-{stamp}.{ext}");
+    let name = format!("{kind}-{stamp}.{ext}");
     std::fs::copy(from, dir.join(&name))?;
     Ok(name)
 }
@@ -547,7 +688,7 @@ fn StylePanel(doc: Doc, dir: PathBuf, picture_url: Option<String>) -> Element {
                         accept: "image/png,image/jpeg",
                         onchange: move |e| {
                             let Some(file) = e.files().into_iter().next() else { return };
-                            match adopt_picture(&dir, &file.path()) {
+                            match adopt_file(&dir, &file.path(), "background") {
                                 Ok(name) => doc.change(|p| p.style.background = Background::Image(name)),
                                 Err(err) => {
                                     let mut error = doc.error;
@@ -626,7 +767,7 @@ fn StylePanel(doc: Doc, dir: PathBuf, picture_url: Option<String>) -> Element {
             "Hide the cursor when it rests"
         }
         p { class: "hint",
-            "Click a zoom on the timeline to edit it. Z adds one at the playhead, S splits there and [ or ] trims before or after it; Space plays; ←/→ step."
+            "Click a zoom or a song on the timeline to edit it. Z adds a zoom at the playhead, S splits there and [ or ] trims before or after it, M stops or starts the music there; Space plays; ←/→ step."
         }
     }
 }
@@ -709,6 +850,124 @@ fn ZoomPanel(doc: Doc, index: usize, selected: Signal<Option<usize>>) -> Element
                 "Delete"
             }
             button { onclick: move |_| selected.set(None), "Done" }
+        }
+    }
+}
+
+#[component]
+fn MusicPanel(doc: Doc, dir: PathBuf, index: usize, selected_music: Signal<Option<usize>>) -> Element {
+    let p = doc.project.read();
+    let m = p.music[index].clone();
+    let duration = p.duration;
+    let plays = p.placed_music().into_iter().find(|pl| pl.index == index).map(|pl| pl.until - pl.at);
+    let bounds = move |start: f64, end: f64| doc.live(|p| music::set_bounds(&mut p.music, index, start, end, duration));
+    rsx! {
+        h2 { "Music {index + 1}" }
+        p { class: "hint",
+            "♪ {m.name} · "
+            match plays {
+                Some(secs) => rsx! { "plays for {secs:.1} s of the video" },
+                None => rsx! { "all of it is cut from the video" },
+            }
+        }
+        div {
+            Slider {
+                edits: doc,
+                label: "Starts at",
+                value: m.start,
+                min: 0.0,
+                max: duration,
+                step: 0.05,
+                show: clock(m.start),
+                oninput: move |v| bounds(v, m.end),
+            }
+            Slider {
+                edits: doc,
+                label: "Stops at",
+                value: m.end,
+                min: 0.0,
+                max: duration,
+                step: 0.05,
+                show: clock(m.end),
+                oninput: move |v| bounds(m.start, v),
+            }
+            Slider {
+                edits: doc,
+                label: "From the song's",
+                value: m.from,
+                min: 0.0,
+                max: 600.0_f64.max(m.from),
+                step: 0.5,
+                show: clock(m.from),
+                oninput: move |v: f64| doc.live(|p| p.music[index].from = v),
+            }
+            Slider {
+                edits: doc,
+                label: "Volume",
+                value: m.volume as f64,
+                min: 0.0,
+                max: 1.0,
+                step: 0.01,
+                show: format!("{:.0}%", m.volume * 100.0),
+                oninput: move |v: f64| doc.live(|p| p.music[index].volume = v as f32),
+            }
+            Slider {
+                edits: doc,
+                label: "Fade in and out",
+                value: m.fade,
+                min: 0.0,
+                max: 5.0,
+                step: 0.1,
+                show: format!("{:.1} s", m.fade),
+                oninput: move |v: f64| doc.live(|p| p.music[index].fade = v),
+            }
+        }
+        div { class: "buttons",
+            button {
+                onclick: move |_| {
+                    document::eval(&format!("window.sv.seek({})", m.start));
+                },
+                "Go to start"
+            }
+            label { class: "button", title: "Another song, playing at the same moments",
+                "Change song"
+                input {
+                    r#type: "file",
+                    accept: "audio/*,.mp3,.m4a,.wav,.aac,.flac",
+                    hidden: true,
+                    onchange: move |e| {
+                        let Some(file) = e.files().into_iter().next() else { return };
+                        let from = file.path();
+                        match adopt_file(&dir, &from, "music") {
+                            Ok(name) => doc.change(|p| {
+                                let m = &mut p.music[index];
+                                m.file = name;
+                                m.name = from.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                                m.from = 0.0;
+                            }),
+                            Err(err) => {
+                                let mut error = doc.error;
+                                error.set(Some(format!("Can't use that song: {err}")));
+                            }
+                        }
+                    },
+                }
+            }
+            button {
+                class: "danger",
+                title: "⌫",
+                onclick: move |_| {
+                    selected_music.set(None);
+                    doc.change(|p| {
+                        p.music.remove(index);
+                    });
+                },
+                "Delete"
+            }
+            button { onclick: move |_| selected_music.set(None), "Done" }
+        }
+        p { class: "hint",
+            "The music starts and stops at these moments of the recording, wherever cuts and the speed put them in the video, and plays at its own speed in between."
         }
     }
 }
