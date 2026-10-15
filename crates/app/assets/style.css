@@ -24,7 +24,7 @@ body {
 h1 { font-size: 16px; margin: 0; }
 h2 { font-size: 13px; margin: 0 0 12px; }
 
-button {
+button, label.button {
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--line);
@@ -33,6 +33,7 @@ button {
   font: inherit;
   cursor: pointer;
 }
+label.button { display: inline-block; }
 button:disabled { opacity: 0.5; cursor: default; }
 button.link { background: none; border: none; color: var(--muted); padding: 0 4px; text-decoration: underline; }
 
@@ -51,6 +52,18 @@ button.link { background: none; border: none; color: var(--muted); padding: 0 4p
 }
 .sidebar header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .sidebar[hidden] { display: none; }
+/* The panel's edge: drag to resize it (a few points wide, over the border) */
+.sidebar-resizer {
+  flex: none;
+  width: 6px;
+  margin-left: -3px;
+  margin-right: -3px;
+  cursor: col-resize;
+  position: relative;
+  z-index: 2;
+}
+.sidebar-resizer:hover { background: color-mix(in srgb, var(--zoom) 60%, transparent); }
+.resize-sheet { position: fixed; inset: 0; z-index: 50; cursor: col-resize; }
 .header-actions { display: flex; align-items: center; gap: 6px; }
 .rail {
   flex: none;
@@ -136,7 +149,7 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
 
 .timeline {
   position: relative;
-  height: 58px;
+  height: 80px;
   background: var(--panel);
   border-radius: 6px;
   overflow: hidden;
@@ -145,7 +158,7 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
 .timeline .zoom {
   position: absolute;
   top: 6px;
-  bottom: 24px;
+  bottom: 46px;
   min-width: 4px;
   background: color-mix(in srgb, var(--zoom) 55%, transparent);
   border: 1px solid var(--zoom);
@@ -343,6 +356,27 @@ button.update-banner-link { background: transparent; font: inherit; cursor: poin
 }
 
 /* Clips cut by hand: a lane under the zooms, split where the user split */
+/* Music, between the zooms and the clips */
+.timeline .music {
+  position: absolute;
+  top: 38px;
+  height: 18px;
+  z-index: 1;
+  box-sizing: border-box;
+  min-width: 4px;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  line-height: 16px;
+  color: #fff;
+  background: color-mix(in srgb, #10b981 45%, transparent);
+  border: 1px solid #10b981;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.timeline .music.selected { background: #10b981; outline: 2px solid #a7f3d0; }
 .timeline .clips { position: absolute; left: 0; right: 0; bottom: 4px; height: 14px; }
 .timeline .clip {
   position: absolute;

@@ -141,6 +141,11 @@ fn content_type(path: &Path) -> &'static str {
         "mov" if cfg!(target_os = "macos") => "video/quicktime",
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
+        "mp3" => "audio/mpeg",
+        "m4a" | "aac" => "audio/mp4",
+        "wav" => "audio/wav",
+        "flac" => "audio/flac",
+        "ogg" => "audio/ogg",
         _ => "video/mp4",
     }
 }

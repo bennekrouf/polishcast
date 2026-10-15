@@ -16,6 +16,28 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- The recordings panel on the left can be made wider or narrower: drag its
+  right edge. The width is remembered; double-click the edge to go back to the
+  usual width.
+- Music under your video. **+ Music** starts a song at the playhead; while the
+  preview plays, press **M** to stop it and **M** again to bring it back, right
+  where you want it. Each song starts and stops at moments of the recording, so
+  it stays with them when you cut pauses, remove clips or change the speed, and
+  it always plays at its own speed. Click a song on the timeline to set its
+  volume, fades and where in the song it begins, or to swap the song. Turn on
+  **Lower the music while I speak** and it dips under your voice, in the preview
+  as in the export.
+
+### Fixed
+
+- Exporting at a faster speed made the picture twice as slow instead of faster
+  while the sound was sped up, so the two drifted apart. The picture now plays
+  at the speed you chose.
+
 ## [0.1.13] - 2026-10-15
 
 ### Fixed

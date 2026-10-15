@@ -1,5 +1,5 @@
-//! How to record, remembered between launches: what to record and whether the Mac's sound goes
-//! in with the microphone.
+//! What the app remembers between launches: what to record, whether the Mac's sound goes in
+//! with the microphone, and how wide the recordings panel is.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -23,6 +23,21 @@ pub struct Settings {
     /// Asked not to be offered to remove Small Video.app, the app under its old name.
     #[serde(default)]
     pub keep_old_app: bool,
+    /// Width of the recordings panel in points, as last dragged. `None`: the default.
+    #[serde(default)]
+    pub sidebar_width: Option<f64>,
+}
+
+/// The recordings panel's width when it hasn't been dragged, and the range it can be dragged in.
+pub const SIDEBAR_WIDTH: f64 = 260.0;
+pub const SIDEBAR_MIN: f64 = 200.0;
+pub const SIDEBAR_MAX: f64 = 520.0;
+
+impl Settings {
+    /// The recordings panel's width, kept within the range it may be dragged to.
+    pub fn sidebar_width(&self) -> f64 {
+        self.sidebar_width.filter(|w| w.is_finite()).unwrap_or(SIDEBAR_WIDTH).clamp(SIDEBAR_MIN, SIDEBAR_MAX)
+    }
 }
 
 fn path() -> Option<PathBuf> {
@@ -57,6 +72,16 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_panel_width_stays_in_range() {
+        let mut s = Settings::default();
+        assert_eq!(s.sidebar_width(), SIDEBAR_WIDTH);
+        s.sidebar_width = Some(5000.0);
+        assert_eq!(s.sidebar_width(), SIDEBAR_MAX);
+        s.sidebar_width = Some(f64::NAN);
+        assert_eq!(s.sidebar_width(), SIDEBAR_WIDTH);
+    }
 
     #[test]
     fn missing_fields_take_the_defaults() {
