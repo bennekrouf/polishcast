@@ -2,7 +2,7 @@
 //! --example record -- <dir> [seconds]`. Prints every event, for debugging capture.
 //!
 //! `SV_FPS`, `SV_CODEC` (h264 or hevc) and `SV_MAX_WIDTH` override the default options,
-//! and `SV_SYSTEM_AUDIO` records the sound apps play;
+//! `SV_SYSTEM_AUDIO` records the sound apps play and `SV_NO_MIC` leaves the microphone out;
 //! `SV_WINDOW` records the window with that id instead of the display (`list` prints them).
 
 use polishcast_capture::{Codec, Event, Options, Recorder, Source};
@@ -48,6 +48,7 @@ fn main() {
         options.codec = Codec::Hevc;
     }
     options.system_audio = env("SV_SYSTEM_AUDIO").is_some();
+    options.microphone = env("SV_NO_MIC").is_none();
     options.max_width = env("SV_MAX_WIDTH").and_then(|v| v.parse().ok());
     if env("SV_WINDOW").as_deref() == Some("list") {
         for w in polishcast_capture::windows() {

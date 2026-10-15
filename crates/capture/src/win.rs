@@ -216,7 +216,7 @@ impl Active {
         let log = pointer::event_log(&raw, started, self.origin, self.size);
         std::fs::write(self.dir.join(take::EVENTS), serde_json::to_vec(&log)?)?;
         let duration = stopped_at.saturating_duration_since(started).as_secs_f64();
-        Ok(Take { dir: self.dir, duration, width: self.width, height: self.height, compact: false })
+        Ok(Take { dir: self.dir, duration, width: self.width, height: self.height, compact: false, sound: None })
     }
 }
 

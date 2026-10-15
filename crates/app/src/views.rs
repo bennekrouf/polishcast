@@ -8,9 +8,10 @@ use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon, TrayIconBuilder};
 use dioxus::desktop::{use_global_shortcut, use_muda_event_handler, use_wry_event_handler, window};
 use dioxus::prelude::*;
-use polishcast_capture::{Area, Event, Options, Recorder, Source, WindowInfo};
+use polishcast_capture::{Area, Event, Options, Recorder, Source, Take, WindowInfo};
 use polishcast_core::take;
 use polishcast_export::compact::compact;
+use polishcast_export::sound;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -230,6 +231,26 @@ pub fn App() -> Element {
             let (compacted_tx, compacted_rx) = (compacted_tx.clone(), compacted_rx.clone());
             let area_rx = area_rx.clone();
             async move {
+                let (mixed_tx, mixed_rx) = mpsc::channel::<(Take, Option<String>)>();
+                // A finished take: its project, then shrinking it in the background.
+                let mut saved = move |t: Take| {
+                    if let Err(e) = takes::create_project(&t) {
+                        error.set(Some(format!("Can't save the project: {e}")));
+                    }
+                    status.set(Status::Idle);
+                    library.set(takes::list());
+                    if t.compact {
+                        compacting.write().insert(t.dir.clone());
+                        let (tx, dir) = (compacted_tx.clone(), t.dir.clone());
+                        std::thread::spawn(move || {
+                            let result = compact(&dir.join(take::SCREEN)).map_err(|e| format!("{e:#}"));
+                            let _ = tx.send((dir, result));
+                        });
+                    }
+                    selected.set(Some(t.dir));
+                    window().set_visible(true);
+                    window().set_focus();
+                };
                 let mut tick = 0u64;
                 loop {
                     tick += 1;
@@ -259,28 +280,28 @@ pub fn App() -> Element {
                                 status.set(Status::Recording(Instant::now()))
                             }
                             Event::Started => {}
-                            Event::Finished(t) => {
-                                if let Err(e) = takes::create_project(&t) {
-                                    error.set(Some(format!("Can't save the project: {e}")));
-                                }
-                                status.set(Status::Idle);
-                                library.set(takes::list());
-                                if t.compact {
-                                    compacting.write().insert(t.dir.clone());
-                                    let (tx, dir) = (compacted_tx.clone(), t.dir.clone());
-                                    std::thread::spawn(move || {
-                                        let result = compact(&dir.join(take::SCREEN)).map_err(|e| format!("{e:#}"));
-                                        let _ = tx.send((dir, result));
-                                    });
-                                }
-                                selected.set(Some(t.dir));
-                                window().set_visible(true);
-                                window().set_focus();
+                            // The sound apps played, recorded apart from one window, goes in
+                            // before the take opens: its pauses are measured once, from the file.
+                            Event::Finished(t) if t.sound.is_some() => {
+                                let tx = mixed_tx.clone();
+                                std::thread::spawn(move || {
+                                    let offset = t.sound.unwrap_or_default();
+                                    let file = t.dir.join(take::SCREEN);
+                                    let result = sound::mix_in(&file, &t.dir.join(take::SOUND), offset);
+                                    let _ = tx.send((t, result.err().map(|e| format!("{e:#}"))));
+                                });
                             }
+                            Event::Finished(t) => saved(t),
                             Event::Failed(e) => {
                                 error.set(Some(e));
                                 status.set(Status::Idle);
                             }
+                        }
+                    }
+                    while let Ok((t, failed)) = mixed_rx.try_recv() {
+                        saved(t);
+                        if failed.is_some() {
+                            notice.set(failed);
                         }
                     }
                     while let Ok((dir, result)) = compacted_rx.try_recv() {

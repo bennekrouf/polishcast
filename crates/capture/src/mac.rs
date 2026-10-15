@@ -11,7 +11,7 @@ use screencapturekit::recording_output::{
     RecordingCallbacks, SCRecordingOutput, SCRecordingOutputCodec, SCRecordingOutputConfiguration,
     SCRecordingOutputFileType,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -39,10 +39,11 @@ impl Shared {
 }
 
 pub struct Active {
-    stream: SCStream,
-    output: SCRecordingOutput,
+    screen: Recording,
+    /// The sound apps play, when it can't come with the picture (one window's filter only
+    /// hears that window's app).
+    sound: Option<Recording>,
     pointer: Logger,
-    shared: Arc<Shared>,
     dir: PathBuf,
     /// What's recorded, in global points, to normalize pointer positions: the display, the
     /// window where it was when recording started, or the area.
@@ -87,7 +88,7 @@ const FINALIZING: Duration = Duration::from_secs(60);
 
 /// Whether a QuickTime file has its index (`moov`), which is written when the file is
 /// finished. Only the top-level box headers are read.
-fn has_index(file: &std::path::Path) -> bool {
+fn has_index(file: &Path) -> bool {
     use std::io::{Read, Seek, SeekFrom};
     let Ok(mut f) = std::fs::File::open(file) else {
         return false;
@@ -181,20 +182,87 @@ impl Active {
         if let Some(rect) = crop {
             config = config.with_source_rect(rect);
         }
+        // A window's filter only hears that window's app, so the sound every app plays is
+        // recorded apart, from the display, and mixed in afterwards.
+        let sound_apart = options.system_audio && matches!(options.source, Source::Window(_));
         let config = config
             .with_fps(options.fps)
             .with_shows_cursor(false)
-            .with_captures_audio(options.system_audio)
+            .with_captures_audio(options.system_audio && !sound_apart)
             .with_captures_microphone(options.microphone)
             .map_err(sc("Microphone"))?;
 
+        let codec = match options.codec {
+            Codec::H264 => SCRecordingOutputCodec::H264,
+            Codec::Hevc => SCRecordingOutputCodec::HEVC,
+        };
+        let pointer = Logger::start();
+        let screen = Recording::start(&filter, &config, &dir.join(take::SCREEN), codec, move || {
+            let _ = events.send(Event::Started);
+        })?;
+        let sound = if sound_apart {
+            let display = display_at(Some((frame.origin.x + frame.size.width / 2.0, frame.origin.y)))?;
+            let filter = display_filter(display).map_err(sc("Content filter"))?;
+            // The picture is thrown away: a recording output needs one, so it's kept tiny.
+            let config = SCStreamConfiguration::new()
+                .with_width(16)
+                .with_height(16)
+                .with_fps(1)
+                .with_shows_cursor(false)
+                .with_captures_audio(true);
+            // Without it the take still has its picture and microphone.
+            Recording::start(&filter, &config, &dir.join(take::SOUND), SCRecordingOutputCodec::H264, || {}).ok()
+        } else {
+            None
+        };
+        Ok(Self { screen, sound, pointer, dir, frame, width, height })
+    }
+
+    pub fn finish(self) -> Result<Take> {
+        let stopped = (self.screen.stop(), self.sound.as_ref().map(Recording::stop));
+        let raw = self.pointer.finish();
+        let (started, duration) = self.screen.finished(stopped.0)?;
+        // When the sound starts, in the picture's time.
+        let sound = self.sound.zip(stopped.1).and_then(|(sound, stopped)| match sound.finished(stopped) {
+            Ok((at, _)) if at >= started => Some(at.duration_since(started).as_secs_f64()),
+            Ok((at, _)) => Some(-started.duration_since(at).as_secs_f64()),
+            Err(_) => {
+                let _ = std::fs::remove_file(self.dir.join(take::SOUND));
+                None
+            }
+        });
+
+        let f = self.frame;
+        let log = pointer::event_log(&raw, started, (f.origin.x, f.origin.y), (f.size.width, f.size.height));
+        std::fs::write(self.dir.join(take::EVENTS), serde_json::to_vec(&log)?)?;
+        // ScreenCaptureKit's file output has no bitrate setting: worth shrinking afterwards.
+        Ok(Take { dir: self.dir, duration, width: self.width, height: self.height, compact: true, sound })
+    }
+}
+
+/// A stream written straight to a file by its recording output.
+struct Recording {
+    stream: SCStream,
+    output: SCRecordingOutput,
+    shared: Arc<Shared>,
+    file: PathBuf,
+}
+
+impl Recording {
+    fn start(
+        filter: &SCContentFilter,
+        config: &SCStreamConfiguration,
+        file: &Path,
+        codec: SCRecordingOutputCodec,
+        on_started: impl Fn() + Send + Sync + 'static,
+    ) -> Result<Self> {
         let shared = Arc::new(Shared::default());
         let callbacks = {
             let (on_start, on_fail, on_finish) = (shared.clone(), shared.clone(), shared.clone());
             RecordingCallbacks::new()
                 .on_start(move || {
                     *on_start.started.lock().unwrap() = Some(Instant::now());
-                    let _ = events.send(Event::Started);
+                    on_started();
                 })
                 .on_fail(move |e| {
                     *on_fail.failed.lock().unwrap() = Some(e);
@@ -204,36 +272,36 @@ impl Active {
         };
         let out_config = SCRecordingOutputConfiguration::new()
             .map_err(sc("Recording output"))?
-            .with_output_url(&dir.join(take::SCREEN))?
-            .with_video_codec(match options.codec {
-                Codec::H264 => SCRecordingOutputCodec::H264,
-                Codec::Hevc => SCRecordingOutputCodec::HEVC,
-            })
+            .with_output_url(file)?
+            .with_video_codec(codec)
             .with_output_file_type(SCRecordingOutputFileType::MOV);
         let output = SCRecordingOutput::new_with_delegate(&out_config, callbacks)
             .context("Recording to a file needs macOS 15 or later")?;
 
-        let stream = SCStream::new(&filter, &config).map_err(sc("Stream"))?;
+        let stream = SCStream::new(filter, config).map_err(sc("Stream"))?;
         stream.add_recording_output(&output).map_err(sc("Recording output"))?;
-        let pointer = Logger::start();
         stream.start_capture().map_err(sc("Starting the capture"))?;
-        Ok(Self { stream, output, pointer, shared, dir, frame, width, height })
+        Ok(Self { stream, output, shared, file: file.to_path_buf() })
     }
 
-    pub fn finish(self) -> Result<Take> {
+    /// Stops capturing. [`Self::finished`] then waits for the file.
+    fn stop(&self) -> Result<()> {
         // Removing the only output stops the capture and waits until the file is complete.
         let removed = self.stream.remove_recording_output(&self.output).map_err(sc("Stopping"));
         let _ = self.stream.stop_capture();
-        let raw = self.pointer.finish();
-        removed?;
+        removed
+    }
+
+    /// When the first frame was written and how long the file is, once it's complete.
+    fn finished(self, stopped: Result<()>) -> Result<(Instant, f64)> {
+        stopped?;
         // The file is finalized after the stream stops; its delegate says when. A long take
         // can take a while, and its index is only written at the very end.
         let ended = self.shared.wait_done(FINALIZING);
         if let Some(e) = self.shared.failed.lock().unwrap().take() {
             bail!("Recording failed: {e}");
         }
-        let file = self.dir.join(take::SCREEN);
-        if !file.is_file() {
+        if !self.file.is_file() {
             bail!(
                 "The recording wasn't saved ({}).",
                 if ended { "ScreenCaptureKit wrote no file" } else { "it never finished" }
@@ -246,19 +314,14 @@ impl Active {
         drop(self.stream);
         drop(self.output);
         let deadline = Instant::now() + FINALIZING;
-        while !has_index(&file) {
+        while !has_index(&self.file) {
             if Instant::now() >= deadline {
                 bail!("The recording wasn't saved: ScreenCaptureKit never finished writing it.");
             }
             std::thread::sleep(Duration::from_millis(200));
         }
-        let started = self.shared.started.lock().unwrap().context("The recording never started")?;
-
-        let f = self.frame;
-        let log = pointer::event_log(&raw, started, (f.origin.x, f.origin.y), (f.size.width, f.size.height));
-        std::fs::write(self.dir.join(take::EVENTS), serde_json::to_vec(&log)?)?;
-        // ScreenCaptureKit's file output has no bitrate setting: worth shrinking afterwards.
-        Ok(Take { dir: self.dir, duration, width: self.width, height: self.height, compact: true })
+        let started = *self.shared.started.lock().unwrap();
+        Ok((started.context("The recording never started")?, duration))
     }
 }
 

@@ -119,6 +119,9 @@ pub struct Take {
     pub height: u32,
     /// The file was written at a fixed, high bitrate and is worth re-encoding smaller.
     pub compact: bool,
+    /// The sound apps played was recorded apart (`take::SOUND`), starting this many seconds
+    /// into the screen recording (before it, if negative), and is still to be mixed in.
+    pub sound: Option<f64>,
 }
 
 #[derive(Debug)]

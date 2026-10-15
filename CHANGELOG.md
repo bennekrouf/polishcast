@@ -38,6 +38,14 @@ user sees in the update prompt should all be accounted for.
   while the sound was sped up, so the two drifted apart. The picture now plays
   at the speed you chose.
 
+## [0.1.13] - 2026-10-15
+
+### Fixed
+
+- Recording one window with the Mac's sound on now includes the sound of every
+  app, not only the recorded window's. Music playing in a browser behind the
+  window used to be missing, and only came through faintly via the microphone.
+
 ## [0.1.12] - 2026-10-14
 
 ### Added
