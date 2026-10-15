@@ -46,6 +46,50 @@ fn source(input: u8, tracks: usize) -> String {
     graph + &format!("amix=inputs={tracks}:duration=longest:normalize=0")
 }
 
+/// The graph mixing `sound` (input 1), which starts `offset` seconds into the recording, into
+/// the recording's `tracks` sound tracks (input 0), producing `[a]`.
+fn mix_graph(tracks: usize, offset: f64) -> String {
+    let shift = if offset > 0.0 {
+        format!(",adelay=delays={}:all=1", (offset * 1000.0).round() as u64)
+    } else if offset < 0.0 {
+        format!(",atrim=start={:.6},asetpts=PTS-STARTPTS", -offset)
+    } else {
+        String::new()
+    };
+    let sound = format!("[1:a:0]{ALIGN}{shift}");
+    match tracks {
+        // Padded: the picture sets the length.
+        0 => format!("{sound},apad[a]"),
+        _ => format!("{}[m];{sound}[s];[m][s]amix=inputs=2:duration=first:normalize=0[a]", source(0, tracks)),
+    }
+}
+
+/// Mixes `sound`, the sound apps played recorded apart and starting `offset` seconds into the
+/// recording, into `file`'s sound, in place; the picture is copied as is. `sound` is deleted
+/// once it's in.
+pub fn mix_in(file: &Path, sound: &Path, offset: f64) -> Result<()> {
+    let ffmpeg = crate::ensure_ffmpeg(&mut |_| {}, &|| false)?;
+    let tracks = audio_tracks(&ffmpeg, file)?;
+    let tmp = file.with_file_name(".mixing.mov");
+    let out = tools::command(&ffmpeg)
+        .args(["-v", "error", "-nostdin", "-y", "-i"])
+        .arg(file)
+        .arg("-i")
+        .arg(sound)
+        .args(["-filter_complex", &mix_graph(tracks, offset), "-map", "0:v:0", "-map", "[a]"])
+        .args(["-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest"])
+        .arg(&tmp)
+        .output()
+        .context("Starting ffmpeg")?;
+    if !out.status.success() {
+        let _ = std::fs::remove_file(&tmp);
+        bail!("Adding the Mac's sound failed: {}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    std::fs::rename(&tmp, file)?;
+    let _ = std::fs::remove_file(sound);
+    Ok(())
+}
+
 /// The loudness of `file`'s sound in 50 ms windows; `None` if it has no sound.
 pub fn loudness(ffmpeg: &Path, file: &Path) -> Result<Option<Loudness>> {
     let tracks = audio_tracks(ffmpeg, file)?;
@@ -168,6 +212,21 @@ mod tests {
         assert_eq!(filter(&tl, false, 1.0, 2).unwrap(), format!("{mixed}[aout]"));
         let cut = cut_filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, 2);
         assert!(cut.starts_with(&format!("{mixed},asplit=2[s0][s1];")), "{cut}");
+    }
+
+    #[test]
+    fn the_sound_recorded_apart_is_lined_up_and_mixed_in() {
+        let sound = "[1:a:0]aresample=async=1:first_pts=0";
+        assert_eq!(
+            mix_graph(1, 0.12),
+            format!(
+                "[0:a:0]aresample=async=1:first_pts=0[m];{sound},adelay=delays=120:all=1[s];\
+                     [m][s]amix=inputs=2:duration=first:normalize=0[a]"
+            )
+        );
+        assert!(mix_graph(1, -0.5).contains(&format!("{sound},atrim=start=0.500000,asetpts=PTS-STARTPTS[s]")));
+        // No microphone: the sound alone.
+        assert_eq!(mix_graph(0, 0.0), format!("{sound},apad[a]"));
     }
 
     #[test]
