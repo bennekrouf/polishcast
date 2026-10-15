@@ -23,11 +23,6 @@ user sees in the update prompt should all be accounted for.
 - The recordings panel on the left can be made wider or narrower: drag its
   right edge. The width is remembered; double-click the edge to go back to the
   usual width.
-
-## [Unreleased]
-
-### Added
-
 - Music under your video. **+ Music** starts a song at the playhead; while the
   preview plays, press **M** to stop it and **M** again to bring it back, right
   where you want it. Each song starts and stops at moments of the recording, so
