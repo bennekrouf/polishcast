@@ -1,4 +1,4 @@
-//! The Polishcast Pro licence on this computer, the free version's exports, and the Pro
+//! The PolishCast Pro licence on this computer, the free version's exports, and the Pro
 //! window. The check itself is offline, in `polishcast_core::license`.
 
 use base64::Engine;
@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 use polishcast_core::license::{self, Exported, License, FREE_EXPORTS};
 use std::path::PathBuf;
 
-/// Where "Buy Polishcast Pro" leads.
+/// Where "Buy PolishCast Pro" leads.
 pub const BUY_URL: &str = "https://mayorana.ch/en/apps/polishcast";
 
 /// The public half of mayorana.ch's licence signing key (32 bytes, standard base64), built in
@@ -108,9 +108,9 @@ pub fn current() -> Status {
     }
 }
 
-/// Checks `key` and, if it is a Polishcast licence, saves it for the next starts.
+/// Checks `key` and, if it is a PolishCast licence, saves it for the next starts.
 pub fn activate(key: &str) -> Result<Status, String> {
-    let public = public_key().ok_or("This build of Polishcast can't check licences. Download it from mayorana.ch.")?;
+    let public = public_key().ok_or("This build of PolishCast can't check licences. Download it from mayorana.ch.")?;
     let license = license::verify(key, &public).map_err(|e| e.to_string())?;
     let dir = data_dir().ok_or("No settings folder to keep the licence in.")?;
     let key: String = key.chars().filter(|c| !c.is_whitespace()).collect();
@@ -173,7 +173,7 @@ pub fn ProDialog() -> Element {
     rsx! {
         div { class: "modal-backdrop", onclick: move |_| close(),
             div { class: "modal", onclick: move |e| e.stop_propagation(),
-                h2 { "Polishcast Pro" }
+                h2 { "PolishCast Pro" }
                 match &current {
                     Status::Pro(l) => rsx! {
                         p { "Licensed to " strong { "{l.email}" } ". Every take can be exported." }
@@ -188,8 +188,8 @@ pub fn ProDialog() -> Element {
                     },
                     Status::Unavailable => rsx! {
                         p { class: "hint",
-                            "This build of Polishcast can't check licences, and exports every take. "
-                            "Download Polishcast from mayorana.ch to use a licence."
+                            "This build of PolishCast can't check licences, and exports every take. "
+                            "Download PolishCast from mayorana.ch to use a licence."
                         }
                     },
                     Status::Free => rsx! {
@@ -198,7 +198,7 @@ pub fn ProDialog() -> Element {
                         }
                         p {
                             "The free version exports {FREE_EXPORTS} different takes; exporting one of them again "
-                            "is free. Recording and editing are never limited. Polishcast Pro exports every take."
+                            "is free. Recording and editing are never limited. PolishCast Pro exports every take."
                         }
                         p { class: "hint", "Free exports left: {left} of {FREE_EXPORTS}" }
                     },
@@ -247,7 +247,7 @@ pub fn ProDialog() -> Element {
                     }
                     if !matches!(current, Status::Pro(_)) {
                         a { class: "button-link", href: "{BUY_URL}", target: "_blank",
-                            if matches!(current, Status::Renew(_)) { "Renew…" } else { "Buy Polishcast Pro…" }
+                            if matches!(current, Status::Renew(_)) { "Renew…" } else { "Buy PolishCast Pro…" }
                         }
                     }
                     button { onclick: move |_| close(), if matches!(current, Status::Pro(_)) { "Close" } else { "Cancel" } }

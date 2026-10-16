@@ -1,12 +1,12 @@
 # Trademark and Brand Policy
 
-The source code of Polishcast is licensed under the PolyForm Noncommercial
+The source code of PolishCast is licensed under the PolyForm Noncommercial
 License 1.0.0 (see [LICENSE](LICENSE)). **This policy covers what that licence
 deliberately does not grant: the name and the brand.**
 
 ## What this covers
 
-- The names **"Polishcast"**, **"polishcast"**, **"polishcast"**, **"Bennekrouf"**, and **"Mayorana"**.
+- The names **"PolishCast"**, **"polishcast"**, **"polishcast"**, **"Bennekrouf"**, and **"Mayorana"**.
 - The project logo and application icons, including `crates/app/assets/icon.svg` and `tray.svg`,
   `icon.png` and `tray.png`, and any icon derived or generated from them (such as the
   `icon.ico` produced during the Windows build).
@@ -23,12 +23,12 @@ should be read as granting one.
   fine and needs no permission.
 - Keep the branding intact in an unmodified copy of the software that you use
   under the terms of LICENSE.
-- Say that your work is "compatible with Polishcast" or "built for Polishcast",
+- Say that your work is "compatible with PolishCast" or "built for PolishCast",
   provided you do not imply that it is produced, endorsed, or supported by us.
 
 ## What you may not do
 
-- Ship a modified build under the name "Polishcast", or under any name
+- Ship a modified build under the name "PolishCast", or under any name
   confusingly similar to it. **Fork it, rebrand it** — change the product name
   and replace the icon assets.
 - Use the logo or icons as the identity of your own product, service, or

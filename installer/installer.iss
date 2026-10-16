@@ -1,4 +1,4 @@
-; Polishcast — Windows Installer
+; PolishCast — Windows Installer
 ; Build: iscc /DMyAppVersion=X.Y.Z installer\installer.iss
 ; Output: dist\polishcast-setup.exe
 
@@ -6,7 +6,7 @@
   #define MyAppVersion "0.1.0"
 #endif
 
-#define MyAppName      "Polishcast"
+#define MyAppName      "PolishCast"
 #define MyAppPublisher "Mayorana"
 #define MyAppURL       "https://github.com/bennekrouf/polishcast"
 #define MyAppExeName   "polishcast.exe"
@@ -19,9 +19,9 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases/latest
-; Per-user install — Polishcast needs no elevation and should never require an
+; Per-user install — PolishCast needs no elevation and should never require an
 ; admin prompt to run. Its webview data and the ffmpeg it fetches live in
-; %LOCALAPPDATA%\Small Video\ (created at launch; the app's name before Polishcast); takes are saved in Videos\Polishcast.
+; %LOCALAPPDATA%\Small Video\ (created at launch; the app's name before PolishCast); takes are saved in Videos\PolishCast.
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes

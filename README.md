@@ -1,4 +1,4 @@
-# Polishcast
+# PolishCast
 
 Record your screen, a window or an area from the menu bar, get a polished video: smooth
 cursor with a ring on clicks, automatic zoom on clicks, background (colour, gradient or your
@@ -28,7 +28,7 @@ Dependencies point one way: `app → capture/export → render → core`.
 cargo run -p polishcast
 ```
 
-Click Polishcast's icon in the menu bar and **Start Recording** (or press **⌘⇧2**, or
+Click PolishCast's icon in the menu bar and **Start Recording** (or press **⌘⇧2**, or
 **Record** in the window); the menu bar shows **● 0:12** while recording. Same again to stop.
 
 The app icon is `crates/app/assets/icon.svg` (rendered to `icon.png` at 1024 px with
@@ -36,7 +36,7 @@ The app icon is `crates/app/assets/icon.svg` (rendered to `icon.png` at 1024 px 
 look in rose. `tray.svg` is its mark alone, rendered at 44 px high to `tray.png`, which macOS
 uses as a template image in the menu bar.
 
-Each take is a folder in `~/Movies/Polishcast/<date time>/`:
+Each take is a folder in `~/Movies/PolishCast/<date time>/`:
 
 | File | What |
 |---|---|
@@ -58,7 +58,7 @@ A recording stops by itself after 2 hours, at 20 GB, or when the disk has less t
 The cursor is left out of the recording on purpose: it's redrawn from `events.json`, smoothed
 and scaled, and the camera follows it. A ring spreads from it at each click, and it fades out
 after 1.5 s at rest and back in just before it moves (`core/src/cursor.rs`; both are style
-settings). Polishcast's own windows are excluded from the capture.
+settings). PolishCast's own windows are excluded from the capture.
 
 ### What to record
 

@@ -10,6 +10,7 @@ mod old_app;
 mod platform;
 mod settings;
 mod takes;
+mod theme;
 mod update_check;
 mod views;
 
@@ -20,7 +21,7 @@ fn main() {
         .with_data_directory(webview_data_dir())
         .with_window(
             WindowBuilder::new()
-                .with_title(concat!("Polishcast ", env!("CARGO_PKG_VERSION")))
+                .with_title(concat!("PolishCast ", env!("CARGO_PKG_VERSION")))
                 .with_inner_size(LogicalSize::new(1280.0, 820.0))
                 .with_window_icon(window_icon()),
         )
@@ -28,7 +29,7 @@ fn main() {
         // Closing the window keeps the app in the menu bar, ready to record.
         .with_close_behaviour(WindowCloseBehaviour::WindowHides)
         // Clicking the menu bar item only opens its menu: starting a recording shouldn't
-        // bring the window up. "Show Polishcast" does, and so does a finished take.
+        // bring the window up. "Show PolishCast" does, and so does a finished take.
         .with_tray_icon_show_window_on_click(false);
     dioxus::LaunchBuilder::desktop().with_cfg(cfg).launch(views::App);
 }

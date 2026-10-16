@@ -1,4 +1,4 @@
-//! Polishcast Pro licences, checked offline, and the free version's ten exports.
+//! PolishCast Pro licences, checked offline, and the free version's ten exports.
 //!
 //! mayorana.ch signs each licence when it is bought with a private Ed25519 key; the app holds
 //! the public half and checks the signature, so no account, network or activation is
@@ -20,7 +20,7 @@ use base64::Engine;
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-/// The product id in every Polishcast licence. The app was called Small Video when the first
+/// The product id in every PolishCast licence. The app was called Small Video when the first
 /// keys were sold, and a key names its product, so the id stays.
 pub const PRODUCT: &str = "small-video";
 
@@ -62,12 +62,12 @@ impl std::fmt::Display for LicenseError {
         match self {
             Self::Malformed => write!(f, "This isn't a complete licence key. Copy the whole key from the email."),
             Self::BadSignature => write!(f, "This licence key isn't valid."),
-            Self::OtherProduct(p) => write!(f, "This is a licence for {p}, not Polishcast."),
+            Self::OtherProduct(p) => write!(f, "This is a licence for {p}, not PolishCast."),
         }
     }
 }
 
-/// The licence in `key`, if `public_key` signed it and it is for Polishcast. Whitespace is
+/// The licence in `key`, if `public_key` signed it and it is for PolishCast. Whitespace is
 /// ignored, since keys pasted from an email are often wrapped.
 pub fn verify(key: &str, public_key: &[u8; 32]) -> Result<License, LicenseError> {
     let key: String = key.chars().filter(|c| !c.is_whitespace()).collect();

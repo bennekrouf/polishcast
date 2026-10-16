@@ -1088,7 +1088,7 @@ enum Export {
 
 /// Where a take's export goes: next to its folder, named after it.
 fn export_path(dir: &std::path::Path, format: Format) -> PathBuf {
-    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Polishcast".into());
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "PolishCast".into());
     dir.with_file_name(format!("{name}.{}", format.extension()))
 }
 
@@ -1250,7 +1250,7 @@ fn ExportPanel(dir: PathBuf) -> Element {
                         if limited {
                             p { class: "hint",
                                 if !allowed {
-                                    "Free exports used up \u{2014} Polishcast Pro exports every take"
+                                    "Free exports used up \u{2014} PolishCast Pro exports every take"
                                 } else if exported.takes.contains(&take) {
                                     "Exporting this take again is free"
                                 } else {
