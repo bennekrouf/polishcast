@@ -209,7 +209,7 @@ jobs:
           set -euo pipefail
           BIN=target/aarch64-apple-darwin/release/polishcast
           VER="${GITHUB_REF_NAME#v}"
-          APP="dist/Polishcast.app"
+          APP="dist/PolishCast.app"
 
           # 1. Construct the .app bundle around the cargo-built binary. The bundle
           #    identifier must never change: macOS keys the Screen Recording and
@@ -231,13 +231,13 @@ jobs:
           <plist version="1.0"><dict>
             <key>CFBundleExecutable</key><string>polishcast</string>
             <key>CFBundleIdentifier</key><string>ch.mayorana.small-video</string>
-            <key>CFBundleName</key><string>Polishcast</string>
-            <key>CFBundleDisplayName</key><string>Polishcast</string>
+            <key>CFBundleName</key><string>PolishCast</string>
+            <key>CFBundleDisplayName</key><string>PolishCast</string>
             <key>CFBundlePackageType</key><string>APPL</string>
             <key>CFBundleShortVersionString</key><string>$VER</string>
             <key>CFBundleVersion</key><string>$VER</string>
             <key>LSMinimumSystemVersion</key><string>15.0</string>
-            <key>NSMicrophoneUsageDescription</key><string>Polishcast records your voice with the screen.</string>
+            <key>NSMicrophoneUsageDescription</key><string>PolishCast records your voice with the screen.</string>
             <key>NSHighResolutionCapable</key><true/>
             $ICON_KEY
           </dict></plist>
@@ -254,7 +254,7 @@ jobs:
           mkdir -p dmg-staging
           cp -R "$APP" dmg-staging/
           ln -s /Applications dmg-staging/Applications
-          hdiutil create -volname "Polishcast" -srcfolder dmg-staging \
+          hdiutil create -volname "PolishCast" -srcfolder dmg-staging \
             -ov -format UDZO dist/polishcast-macos-arm64.dmg
           codesign --force --timestamp --sign "$SIGNING_IDENTITY" \
             dist/polishcast-macos-arm64.dmg
@@ -631,7 +631,7 @@ jobs:
           ## Download
 
           ### macOS (Apple Silicon, macOS 15 or later)
-          Download `polishcast-macos-arm64.dmg`, open it, and drag Polishcast to /Applications.
+          Download `polishcast-macos-arm64.dmg`, open it, and drag PolishCast to /Applications.
           The first recording asks for Screen Recording and Microphone access.
           Signed with Apple Developer ID and notarized — opens with a normal double-click.
           (Only shipped once the macOS signing secrets are configured — see the workflow.)
@@ -641,7 +641,7 @@ jobs:
           EOF
 
           gh release create "$TAG" \
-            --title "Polishcast $TAG" \
+            --title "PolishCast $TAG" \
             --notes-file notes.md \
             release/latest.json \
             release/releases.json

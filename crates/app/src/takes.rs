@@ -1,4 +1,4 @@
-//! Takes on disk: one folder per recording under ~/Movies/Polishcast.
+//! Takes on disk: one folder per recording under ~/Movies/PolishCast.
 
 use polishcast_capture::Take;
 use polishcast_core::{take, EventLog, Project};
@@ -13,7 +13,8 @@ pub fn library() -> PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
         let videos = dirs::video_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Movies"));
-        moved_into_place(&videos.join("Small Video"), videos.join("Polishcast"))
+        recased(&videos, "Polishcast", "PolishCast");
+        moved_into_place(&videos.join("Small Video"), videos.join("PolishCast"))
     })
     .clone()
 }
@@ -28,6 +29,18 @@ fn moved_into_place(legacy: &Path, dir: PathBuf) -> PathBuf {
     match std::fs::rename(legacy, &dir) {
         Ok(()) => dir,
         Err(_) => legacy.to_path_buf(),
+    }
+}
+
+/// Renames `parent/old` to `parent/new` when they differ only in case: the app wrote `Polishcast`
+/// for a few releases before the name settled on PolishCast. macOS and Windows match folder names
+/// regardless of case, so the folder is found either way; this only fixes how it reads in Finder.
+/// The names are compared as listed, since `exists()` cannot tell the two apart.
+fn recased(parent: &Path, old: &str, new: &str) {
+    let Ok(read) = std::fs::read_dir(parent) else { return };
+    let names: Vec<_> = read.filter_map(|e| e.ok().map(|e| e.file_name())).collect();
+    if names.iter().any(|n| n == old) && !names.iter().any(|n| n == new) {
+        let _ = std::fs::rename(parent.join(old), parent.join(new));
     }
 }
 
@@ -106,7 +119,7 @@ mod tests {
     #[test]
     fn takes_saved_under_the_old_name_move_to_the_new_one() {
         let base = std::env::temp_dir().join(format!("polishcast-library-test-{}", std::process::id()));
-        let (legacy, dir) = (base.join("Small Video"), base.join("Polishcast"));
+        let (legacy, dir) = (base.join("Small Video"), base.join("PolishCast"));
         std::fs::create_dir_all(legacy.join("take")).unwrap();
 
         assert_eq!(moved_into_place(&legacy, dir.clone()), dir);
@@ -117,6 +130,22 @@ mod tests {
         std::fs::create_dir_all(&legacy).unwrap();
         assert_eq!(moved_into_place(&legacy, dir.clone()), dir);
         assert!(legacy.exists());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn a_library_written_polishcast_becomes_polishcast_with_a_capital_c() {
+        let base = std::env::temp_dir().join(format!("polishcast-recase-test-{}", std::process::id()));
+        std::fs::create_dir_all(base.join("Polishcast").join("take")).unwrap();
+
+        recased(&base, "Polishcast", "PolishCast");
+        let names: Vec<_> = std::fs::read_dir(&base).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, ["PolishCast"]);
+        assert!(base.join("PolishCast").join("take").is_dir());
+
+        // Already right: nothing to do.
+        recased(&base, "Polishcast", "PolishCast");
+        assert!(base.join("PolishCast").join("take").is_dir());
         std::fs::remove_dir_all(base).unwrap();
     }
 }

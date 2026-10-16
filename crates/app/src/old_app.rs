@@ -1,6 +1,6 @@
-//! The app was called Small Video until 0.1.8. On macOS the update installs Polishcast.app next
+//! The app was called Small Video until 0.1.8. On macOS the update installs PolishCast.app next
 //! to Small Video.app instead of replacing it, and the old app, still in the Dock or Spotlight,
-//! keeps offering an update the user has already installed. Polishcast offers to remove it.
+//! keeps offering an update the user has already installed. PolishCast offers to remove it.
 
 use std::path::{Path, PathBuf};
 

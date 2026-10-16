@@ -7,6 +7,27 @@
   --muted: #a1a1aa;
   --accent: #ef4444;
   --zoom: #6366f1;
+  --error: #fca5a5;
+  --selected: #c7d2fe;
+  --music: #10b981;
+  --music-selected: #a7f3d0;
+}
+
+/* Light: when the OS is light, or the toggle says so (src/theme.rs). The
+   recording preview (.stage .content) stays black in both: it is the video. */
+body.light {
+  color-scheme: light;
+  --bg: #fafafa;
+  --panel: #f4f4f5;
+  --line: #d4d4d8;
+  --text: #18181b;
+  --muted: #52525b;
+  --accent: #dc2626;
+  --zoom: #4f46e5;
+  --error: #b91c1c;
+  --selected: #4338ca;
+  --music: #059669;
+  --music-selected: #047857;
 }
 
 * { box-sizing: border-box; }
@@ -38,7 +59,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 button.link { background: none; border: none; color: var(--muted); padding: 0 4px; text-decoration: underline; }
 
 .hint, .empty { color: var(--muted); }
-.error { color: #fca5a5; margin: 6px 0; }
+.error { color: var(--error); margin: 6px 0; }
 .pad { padding: 24px; }
 
 /* Layout */
@@ -102,7 +123,7 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
 .takes { list-style: none; padding: 0; margin: 12px 0 0; }
 .takes li { position: relative; padding: 8px 32px 8px 10px; border-radius: 6px; cursor: pointer; }
 .takes li:hover { background: var(--panel); }
-.takes li.on { background: #3f3f46; }
+.takes li.on { background: var(--line); }
 .takes .name { display: block; font-weight: 500; }
 .takes .meta { color: var(--muted); font-size: 12px; }
 
@@ -171,14 +192,14 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
   white-space: nowrap;
   cursor: pointer;
 }
-.timeline .zoom.selected { background: var(--zoom); outline: 2px solid #c7d2fe; }
+.timeline .zoom.selected { background: var(--zoom); outline: 2px solid var(--selected); }
 .timeline .playhead {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: #fff;
+  background: var(--text);
   pointer-events: none;
 }
 
@@ -187,6 +208,7 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
   flex: none;
   border-left: 1px solid var(--line);
   padding: 16px;
+  padding-top: 48px; /* clear of the theme toggle */
   overflow-y: auto;
 }
 .field { display: block; margin-bottom: 14px; }
@@ -203,7 +225,7 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
 
 .swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .swatch { width: 28px; height: 28px; padding: 0; border-radius: 6px; }
-.swatch.on { outline: 2px solid #fff; outline-offset: 1px; }
+.swatch.on { outline: 2px solid var(--text); outline-offset: 1px; }
 /* Your own picture: a "+" until one is chosen, then the picture itself */
 .swatch.picture {
   display: inline-flex;
@@ -244,7 +266,7 @@ button.wide { width: 100%; padding: 8px; }
 }
 .takes li:hover .item-trash { visibility: visible; }
 .item-trash:hover { border-color: var(--accent); }
-button.danger { border-color: var(--accent); color: #fca5a5; }
+button.danger { border-color: var(--accent); color: var(--error); }
 
 kbd {
   font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -296,7 +318,7 @@ button kbd { margin-left: 6px; }
 .timeline .zoom { z-index: 1; }
 .blanks { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; }
 
-/* Polishcast Pro */
+/* PolishCast Pro */
 .pro-button { align-self: flex-start; color: var(--zoom); border-color: var(--zoom); }
 .modal textarea.licence-key {
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -323,7 +345,7 @@ button kbd { margin-left: 6px; }
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 8px 16px;
+  padding: 8px 56px 8px 16px; /* right: clear of the theme toggle */
   background: var(--zoom);
   color: #fff;
   font-size: 13px;
@@ -370,13 +392,13 @@ button.update-banner-link { background: transparent; font: inherit; cursor: poin
   text-overflow: ellipsis;
   font-size: 11px;
   line-height: 16px;
-  color: #fff;
-  background: color-mix(in srgb, #10b981 45%, transparent);
-  border: 1px solid #10b981;
+  color: var(--text);
+  background: color-mix(in srgb, var(--music) 45%, transparent);
+  border: 1px solid var(--music);
   border-radius: 4px;
   cursor: pointer;
 }
-.timeline .music.selected { background: #10b981; outline: 2px solid #a7f3d0; }
+.timeline .music.selected { background: var(--music); outline: 2px solid var(--music-selected); }
 .timeline .clips { position: absolute; left: 0; right: 0; bottom: 4px; height: 14px; }
 .timeline .clip {
   position: absolute;
@@ -393,4 +415,30 @@ button.update-banner-link { background: transparent; font: inherit; cursor: poin
 .timeline .clip.removed {
   background: repeating-linear-gradient(135deg, rgba(239, 68, 68, 0.5) 0 4px, rgba(239, 68, 68, 0.15) 4px 8px);
 }
-.timeline .clip.selected { outline: 2px solid #c7d2fe; outline-offset: -1px; }
+.timeline .clip.selected { outline: 2px solid var(--selected); outline-offset: -1px; }
+
+/* ── Theme toggle (top-right) — same as ShipScreen and GitAgent ── */
+.btn-theme {
+    position: fixed;
+    top: 10px;
+    right: 14px;
+    z-index: 1000;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    color: var(--muted);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+.btn-theme:hover { border-color: var(--zoom); color: var(--zoom); }
+.theme-icon {
+    width: 15px; height: 15px;
+    fill: none; stroke: currentColor; stroke-width: 1.75;
+    stroke-linecap: round; stroke-linejoin: round;
+}

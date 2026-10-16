@@ -13,7 +13,7 @@ const FFMPEG_WINDOWS: &str = "https://github.com/yt-dlp/FFmpeg-Builds/releases/l
 const FFMPEG_UNIX: &str = "https://ffmpeg.martin-riedl.de";
 
 /// %LOCALAPPDATA%\Small Video\tools, ~/Library/Application Support/Small Video/tools,
-/// ~/.local/share/Small Video/tools (named after the app before it was Polishcast).
+/// ~/.local/share/Small Video/tools (named after the app before it was PolishCast).
 pub fn dir() -> PathBuf {
     dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join("Small Video").join("tools")
 }

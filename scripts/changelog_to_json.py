@@ -32,7 +32,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 NAME = "polishcast"
-PRODUCT = "Polishcast"
+PRODUCT = "PolishCast"
 PAGE = "https://mayorana.ch/en/apps/polishcast"
 
 # "## [0.5.49] - 2026-09-05" or "## [Unreleased]"

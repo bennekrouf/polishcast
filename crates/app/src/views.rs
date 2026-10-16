@@ -48,13 +48,13 @@ struct Tray {
 impl Tray {
     fn new() -> Self {
         let record = MenuItem::new("Start Recording", true, None);
-        let show = MenuItem::new("Show Polishcast", true, None);
+        let show = MenuItem::new("Show PolishCast", true, None);
         let menu = Menu::new();
         let _ = menu.append_items(&[&record, &show, &PredefinedMenuItem::separator(), &PredefinedMenuItem::quit(None)]);
         let mut builder = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_menu_on_left_click(true)
-            .with_tooltip("Polishcast")
+            .with_tooltip("PolishCast")
             .with_icon_as_template(cfg!(target_os = "macos"));
         if let Some(icon) = crate::decode_png(TRAY_PNG, 44).and_then(|(rgba, w, h)| Icon::from_rgba(rgba, w, h).ok()) {
             builder = builder.with_icon(icon);
@@ -325,10 +325,11 @@ pub fn App() -> Element {
 
     rsx! {
         style { {CSS} }
+        crate::theme::ThemeToggle {}
         if let Some(info) = update() {
             div { class: "update-banner",
                 span { class: "update-banner-text",
-                    "Polishcast "
+                    "PolishCast "
                     strong { "{info.latest_version}" }
                     " is available (you have {env!(\"CARGO_PKG_VERSION\")})."
                 }
@@ -403,7 +404,7 @@ pub fn App() -> Element {
                 width: "{settings.read().sidebar_width()}px",
                 header {
                     h1 {
-                        "Polishcast"
+                        "PolishCast"
                         // Which build is running, for bug reports and support.
                         span { class: "app-version", {concat!("v", env!("CARGO_PKG_VERSION"))} }
                     }
@@ -425,10 +426,10 @@ pub fn App() -> Element {
                 {
                     let mut open = pro.open;
                     let (label, title) = match *pro.status.read() {
-                        crate::licence::Status::Pro(_) => ("Pro \u{2713}", "Polishcast Pro is active on this computer"),
+                        crate::licence::Status::Pro(_) => ("Pro \u{2713}", "PolishCast Pro is active on this computer"),
                         crate::licence::Status::Renew(_) => ("Renew Pro\u{2026}", "Your Pro updates ended before this version"),
                         crate::licence::Status::Unavailable => ("Pro", "This build exports every take"),
-                        crate::licence::Status::Free => ("Get Pro\u{2026}", "Buy Polishcast Pro, or paste your licence key"),
+                        crate::licence::Status::Free => ("Get Pro\u{2026}", "Buy PolishCast Pro, or paste your licence key"),
                     };
                     rsx! {
                         button { class: "pro-button", title: "{title}", onclick: move |_| open.set(Some(None)), "{label}" }
@@ -443,9 +444,9 @@ pub fn App() -> Element {
                 }
                 p { class: "hint",
                     if shortcut.is_ok() {
-                        "{platform::SHORTCUT_LABEL} or Polishcast's icon in the {TRAY_PLACE} records from any app. Its windows are left out."
+                        "{platform::SHORTCUT_LABEL} or PolishCast's icon in the {TRAY_PLACE} records from any app. Its windows are left out."
                     } else {
-                        "Polishcast's icon in the {TRAY_PLACE} records from any app. Its windows are left out."
+                        "PolishCast's icon in the {TRAY_PLACE} records from any app. Its windows are left out."
                     }
                 }
                 if let Some(e) = error() {

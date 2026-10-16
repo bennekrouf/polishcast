@@ -57,7 +57,7 @@ fn sc<E: std::fmt::Debug>(what: &'static str) -> impl FnOnce(E) -> anyhow::Error
 }
 
 const PERMISSION: &str =
-    "Can't list the screens. Allow Polishcast in System Settings › Privacy & Security › Screen Recording";
+    "Can't list the screens. Allow PolishCast in System Settings › Privacy & Security › Screen Recording";
 
 /// Windows worth offering: on screen, normal (not a menu or the Dock), big enough, not ours.
 pub fn windows() -> Vec<WindowInfo> {
@@ -126,7 +126,7 @@ impl Active {
         pointer::prepare_thread();
         let content = SCShareableContent::get().map_err(sc(PERMISSION))?;
         let displays = content.displays();
-        // Leave Polishcast's own windows out of a display's recording.
+        // Leave PolishCast's own windows out of a display's recording.
         let me = std::process::id() as i32;
         let own: Vec<_> = content.applications().into_iter().filter(|a| a.process_id() == me).collect();
         let own: Vec<&_> = own.iter().collect();

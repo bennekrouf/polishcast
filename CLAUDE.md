@@ -1,8 +1,8 @@
-# Polishcast
+# PolishCast
 
 ## Release notes
 
-Every change a user of Polishcast could notice gets a note in `CHANGELOG.md`, in
+Every change a user of PolishCast could notice gets a note in `CHANGELOG.md`, in
 the same PR as the change. The notes are published as-is at
 <https://mayorana.ch/en/apps/polishcast/releases> and in the GitHub Release body.
 
