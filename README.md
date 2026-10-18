@@ -113,6 +113,17 @@ Export needs ffmpeg. The app uses its own copy (downloaded on first use into its
 `tools/`, checked against its published SHA-256, as in TrackCut), or else one on the PATH, in
 Homebrew's folders or in TrackCut's tools folder.
 
+### Use from Claude (MCP)
+
+`polishcast mcp` serves the takes to an MCP client over stdio, with no window
+(`app/src/mcp.rs`); the **MCP** button next to Get Pro… shows the Claude Desktop config
+and the Claude Code command. The tools: `list_takes`, `get_take`, `set_zooms`,
+`set_clips`, `set_blanks`, `set_style` and `export`, on the editor's own helpers
+(`export_path`, `measure`, `cut_blanks`, `toggle_clip`) and the same free-export count.
+Each tool reads `project.json`, changes it and writes it back at once; an open editor
+checks the file every 2 s and takes a change in as one undo step. Recording isn't
+exposed. `POLISHCAST_LIBRARY` points it at another library, as it does the app.
+
 ### Permissions
 
 The first recording asks for **Screen Recording** and **Microphone**. When run with

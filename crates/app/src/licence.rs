@@ -78,6 +78,28 @@ impl Pro {
     }
 }
 
+/// Whether `take` may be exported, by the same rule and from the same file as the window's
+/// export panel: for `mcp`, which has no `Pro` signals.
+pub fn allows_export(take: &str) -> bool {
+    current().unlimited() || load_exported().allows(take)
+}
+
+/// Counts a finished export of `take` against the free version's, as the window does.
+pub fn count_export(take: &str) {
+    if current().unlimited() {
+        return;
+    }
+    let mut exported = load_exported();
+    if exported.record(take) {
+        save_exported(&exported);
+    }
+}
+
+/// Free exports not used yet; `None` when exports aren't limited.
+pub fn free_exports_left() -> Option<usize> {
+    (!current().unlimited()).then(|| load_exported().left())
+}
+
 fn data_dir() -> Option<PathBuf> {
     Some(dirs::data_local_dir()?.join("Small Video"))
 }

@@ -6,6 +6,9 @@ license-file.workspace = true
 description = "Record your screen, get a polished video"
 
 [dependencies]
+# The Copy buttons in the "Use PolishCast from Claude" window: the native clipboard, since the
+# web view's clipboard API needs a secure origin and a gesture check that differ per platform.
+arboard = "3"
 polishcast-core.workspace = true
 polishcast-capture.workspace = true
 polishcast-render.workspace = true

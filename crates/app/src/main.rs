@@ -5,6 +5,7 @@ mod area_picker;
 mod editor;
 mod licence;
 mod limits;
+mod mcp;
 mod media_server;
 mod old_app;
 mod platform;
@@ -17,6 +18,10 @@ mod views;
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder, WindowCloseBehaviour};
 
 fn main() {
+    // `polishcast mcp`: the takes over stdio for an MCP client, and no window.
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        return mcp::serve();
+    }
     let cfg = Config::new()
         .with_data_directory(webview_data_dir())
         .with_window(

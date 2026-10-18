@@ -56,6 +56,13 @@ struct Doc {
     before: Signal<Option<Project>>,
     path: Signal<PathBuf>,
     error: Signal<Option<String>>,
+    /// project.json's modification time as this window last read or wrote it: a different
+    /// one means `polishcast mcp`, driven by Claude, changed the take.
+    seen: Signal<Option<std::time::SystemTime>>,
+}
+
+fn modified(path: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
 impl Doc {
@@ -107,6 +114,28 @@ impl Doc {
         if let Err(e) = self.project.peek().save(&self.path.peek()) {
             self.error.set(Some(format!("Can't save the project: {e}")));
         }
+        let seen = modified(&self.path.peek());
+        self.seen.set(seen);
+    }
+
+    /// Takes in a change another process saved, unless a gesture is under way here (it is the
+    /// newer, and is saved over it). The change is one undo step, so ⌘Z takes it back.
+    fn reload_if_changed(mut self) {
+        if self.before.peek().is_some() {
+            return;
+        }
+        let path = self.path.peek().clone();
+        let now = modified(&path);
+        if now == *self.seen.peek() {
+            return;
+        }
+        self.seen.set(now);
+        let Ok(changed) = Project::load(&path) else { return };
+        let current = self.project.peek().clone();
+        if changed != current {
+            self.history.write().record(current);
+            self.project.set(changed);
+        }
     }
 }
 
@@ -135,7 +164,15 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
         before: use_signal(|| None),
         path: use_signal(|| dir.join(take::PROJECT)),
         error: use_signal(|| None),
+        seen: use_signal(|| modified(&dir.join(take::PROJECT))),
     };
+    // What Claude changes through `polishcast mcp` shows up here.
+    use_future(move || async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            doc.reload_if_changed();
+        }
+    });
     let mut time = use_signal(|| 0.0f64);
     let loudness = use_signal({
         let dir = dir.clone();
@@ -1032,7 +1069,7 @@ fn MusicPanel(
 }
 
 /// Removes a clip from the video, or puts it back.
-fn toggle_clip(p: &mut Project, clip: (f64, f64)) {
+pub(crate) fn toggle_clip(p: &mut Project, clip: (f64, f64)) {
     if clips::is_removed(&p.removed, clip) {
         clips::restore(&mut p.removed, clip);
     } else {
@@ -1073,11 +1110,11 @@ fn ClipPanel(doc: Doc, clip: (f64, f64), selected_clip: Signal<Option<(f64, f64)
     }
 }
 
-const RESOLUTIONS: &[(u32, &str)] = &[(1920, "1080p"), (2560, "1440p"), (3840, "4K")];
-const FRAME_RATES: &[u32] = &[30, 60];
+pub(crate) const RESOLUTIONS: &[(u32, &str)] = &[(1920, "1080p"), (2560, "1440p"), (3840, "4K")];
+pub(crate) const FRAME_RATES: &[u32] = &[30, 60];
 /// GIFs grow fast with size and frame rate; these keep them small enough to paste anywhere.
-const GIF_SIZES: &[(u32, &str)] = &[(640, "640 px"), (960, "960 px"), (1280, "1280 px")];
-const GIF_FRAME_RATES: &[u32] = &[10, 15, 24];
+pub(crate) const GIF_SIZES: &[(u32, &str)] = &[(640, "640 px"), (960, "960 px"), (1280, "1280 px")];
+pub(crate) const GIF_FRAME_RATES: &[u32] = &[10, 15, 24];
 
 enum Export {
     Idle,
@@ -1087,7 +1124,7 @@ enum Export {
 }
 
 /// Where a take's export goes: next to its folder, named after it.
-fn export_path(dir: &std::path::Path, format: Format) -> PathBuf {
+pub(crate) fn export_path(dir: &std::path::Path, format: Format) -> PathBuf {
     let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "PolishCast".into());
     dir.with_file_name(format!("{name}.{}", format.extension()))
 }
@@ -1277,7 +1314,7 @@ enum Measure {
     Failed(String),
 }
 
-fn measure(dir: &std::path::Path) -> anyhow::Result<Option<Loudness>> {
+pub(crate) fn measure(dir: &std::path::Path) -> anyhow::Result<Option<Loudness>> {
     let ffmpeg = polishcast_export::ensure_ffmpeg(&mut |_| {}, &|| false)?;
     let loudness = polishcast_export::sound::loudness(&ffmpeg, &dir.join(take::SCREEN))?;
     if let Some(l) = &loudness {
@@ -1287,7 +1324,7 @@ fn measure(dir: &std::path::Path) -> anyhow::Result<Option<Loudness>> {
 }
 
 /// Turns blank cutting on with `params`, finding the cuts again (cuts the user kept stay kept).
-fn cut_blanks(p: &mut Project, loudness: &Loudness, params: BlankParams) {
+pub(crate) fn cut_blanks(p: &mut Project, loudness: &Loudness, params: BlankParams) {
     p.cuts = redetect(&p.cuts, loudness, p.duration, &params);
     p.blanks = Some(params);
 }

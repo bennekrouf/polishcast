@@ -87,6 +87,7 @@ fn clock(d: Duration) -> String {
 pub fn App() -> Element {
     let recorder = use_hook(Recorder::spawn);
     let pro = use_context_provider(crate::licence::Pro::new);
+    let mut mcp_open = use_context_provider(|| crate::mcp::McpOpen(Signal::new(false))).0;
     // Delayed and best-effort: a release check is never worth slowing a cold start, and a
     // failed one is not worth mentioning. Dismissed for this session only.
     let mut update = use_signal(|| Option::<crate::update_check::UpdateInfo>::None);
@@ -432,7 +433,15 @@ pub fn App() -> Element {
                         crate::licence::Status::Free => ("Get Pro\u{2026}", "Buy PolishCast Pro, or paste your licence key"),
                     };
                     rsx! {
-                        button { class: "pro-button", title: "{title}", onclick: move |_| open.set(Some(None)), "{label}" }
+                        div { class: "sidebar-buttons",
+                            button { class: "pro-button", title: "{title}", onclick: move |_| open.set(Some(None)), "{label}" }
+                            button {
+                                class: "mcp-button",
+                                title: "Use PolishCast from Claude Desktop or Claude Code",
+                                onclick: move |_| mcp_open.set(true),
+                                "MCP"
+                            }
+                        }
                     }
                 }
                 RecordSettings {
@@ -541,6 +550,7 @@ pub fn App() -> Element {
                 }
             }
             crate::licence::ProDialog {}
+            crate::mcp::McpDialog {}
             if let Some(dir) = confirm_delete() {
                 DeleteDialog {
                     dir,
