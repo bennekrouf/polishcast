@@ -16,6 +16,19 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- Use PolishCast from Claude. The new **MCP** button next to Get Pro… shows
+  what to paste into Claude Desktop, or the one line to run for Claude Code,
+  already pointing at where PolishCast is installed. Claude can then list your
+  takes, add, move and remove zooms (or suggest them again from your clicks),
+  cut the pauses, trim and leave out clips, change the background, the frame's
+  shape and the speed, and export an MP4 or a GIF. A take open in the editor
+  shows Claude's changes within a couple of seconds, and ⌘Z takes them back.
+  Recording stays yours, from the menu bar.
+
 ## [0.1.15] - 2026-10-16
 
 ### Added
