@@ -327,6 +327,12 @@ jobs:
           POLISHCAST_LICENSE_PUBLIC_KEY: ${{ vars.SMALL_VIDEO_LICENSE_PUBLIC_KEY }}
         run: cargo build --release
 
+      # The app must start on a PC without the Visual C++ Redistributable, so the
+      # .exe may not import VCRUNTIME140*.dll (see .cargo/config.toml).
+      - name: Check static C runtime
+        shell: pwsh
+        run: ./scripts/check-windows-crt.ps1 target\release\polishcast.exe
+
       - name: Copy WebView2Loader.dll
         shell: pwsh
         run: |
