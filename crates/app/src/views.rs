@@ -441,6 +441,14 @@ pub fn App() -> Element {
                                 onclick: move |_| mcp_open.set(true),
                                 "MCP"
                             }
+                            // A link, not a button: the webview hands it to the browser.
+                            a {
+                                class: "button mcp-button",
+                                href: "{crate::feedback::contact_url()}",
+                                target: "_blank",
+                                title: "Ideas, bugs, questions: send them to the person who makes PolishCast",
+                                "Feedback"
+                            }
                         }
                     }
                 }
