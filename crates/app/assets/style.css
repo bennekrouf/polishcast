@@ -45,7 +45,7 @@ body {
 h1 { font-size: 16px; margin: 0; }
 h2 { font-size: 13px; margin: 0 0 12px; }
 
-button, label.button {
+button, label.button, a.button {
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--line);
@@ -55,6 +55,7 @@ button, label.button {
   cursor: pointer;
 }
 label.button { display: inline-block; }
+a.button { display: inline-block; text-decoration: none; }
 button:disabled { opacity: 0.5; cursor: default; }
 button.link { background: none; border: none; color: var(--muted); padding: 0 4px; text-decoration: underline; }
 

@@ -3,6 +3,7 @@
 
 mod area_picker;
 mod editor;
+mod feedback;
 mod licence;
 mod limits;
 mod mcp;
