@@ -321,7 +321,7 @@ button kbd { margin-left: 6px; }
 
 /* PolishCast Pro */
 .pro-button { align-self: flex-start; color: var(--zoom); border-color: var(--zoom); }
-.modal textarea.licence-key {
+.modal .licence-key {
   font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--text);
   background: var(--bg, #18181b);

@@ -159,10 +159,6 @@ jobs:
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
       - name: Build
-        env:
-          # Public half of the key mayorana.ch signs Pro licences with (repository
-          # variable, not a secret). Without it the build can't check licences.
-          POLISHCAST_LICENSE_PUBLIC_KEY: ${{ vars.SMALL_VIDEO_LICENSE_PUBLIC_KEY }}
         run: cargo build --release --target aarch64-apple-darwin
 
       # ── Sign the binary with hardened runtime + webview entitlements ───────
@@ -321,10 +317,6 @@ jobs:
           }
 
       - name: Build
-        env:
-          # Public half of the key mayorana.ch signs Pro licences with (repository
-          # variable, not a secret). Without it the build can't check licences.
-          POLISHCAST_LICENSE_PUBLIC_KEY: ${{ vars.SMALL_VIDEO_LICENSE_PUBLIC_KEY }}
         run: cargo build --release
 
       # The app must start on a PC without the Visual C++ Redistributable, so the
