@@ -438,6 +438,7 @@ pub fn App() -> Element {
                     let (label, title) = match *pro.status.read() {
                         crate::licence::Status::Pro(_) => ("Pro \u{2713}", "PolishCast Pro is active on this computer"),
                         crate::licence::Status::Free => ("Get Pro\u{2026}", "Subscribe to PolishCast Pro, or paste your licence number"),
+                        crate::licence::Status::NotPro(ref a) if a.is_free() => ("Get Pro\u{2026}", "Free AI credits, no Pro: subscribe to PolishCast Pro to export every take"),
                         _ => ("Renew Pro\u{2026}", "Your licence doesn't make this PolishCast Pro right now"),
                     };
                     rsx! {

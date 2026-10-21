@@ -16,6 +16,15 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- Free AI credits every month, without Pro. Enter your email under Get free
+  AI credits in the Pro window and the licence number arrives by email; paste
+  it in the same window. The window then shows how many credits are left this
+  month. The free version's limits stay as they are.
+
 ## [0.1.19] - 2026-10-21
 
 ### Changed

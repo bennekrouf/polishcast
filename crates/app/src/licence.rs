@@ -11,7 +11,7 @@
 
 use dioxus::prelude::*;
 pub use polishcast_core::license::Status;
-use polishcast_core::license::{self, Answer, Exported, Saved, FREE_EXPORTS, PRODUCT};
+use polishcast_core::license::{self, Answer, Exported, FreeError, Saved, FREE_EXPORTS, PRODUCT};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -217,6 +217,31 @@ async fn portal_url_async(licence: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || portal_url(&licence)).await.map_err(|e| e.to_string())?
 }
 
+/// Asks api0 to email `email` a licence for the free allowance of AI credits. The licence
+/// number itself only goes by email. Blocking.
+pub fn request_free_credits(email: &str) -> Result<String, FreeError> {
+    if !license::plausible_email(email) {
+        return Err(FreeError::Refused("Enter the email the licence should go to.".into()));
+    }
+    let failed = |e: String| FreeError::Refused(format!("The free AI credits couldn't be requested ({e})."));
+    let mut resp = agent()
+        .post(format!("{GATEWAY}/api/plans/free"))
+        .header("X-Client-App", PRODUCT)
+        .header("Content-Type", "application/json")
+        .send(serde_json::json!({ "email": email.trim() }).to_string())
+        .map_err(|e| failed(e.to_string()))?;
+    let status = resp.status().as_u16();
+    let body = resp.body_mut().read_to_string().unwrap_or_default();
+    license::free_reply(status, &body)
+}
+
+/// `request_free_credits`, off the UI thread.
+pub async fn request_free_credits_async(email: String) -> Result<String, FreeError> {
+    tokio::task::spawn_blocking(move || request_free_credits(&email))
+        .await
+        .map_err(|e| FreeError::Refused(e.to_string()))?
+}
+
 /// Opens `url` in the default browser.
 fn open_url(url: &str) {
     use std::process::Command;
@@ -259,9 +284,13 @@ pub fn ProDialog() -> Element {
     let mut key = use_signal(String::new);
     let mut problem = use_signal(|| Option::<String>::None);
     let busy = use_signal(|| false);
+    let free_email = use_signal(String::new);
+    let free_note = use_signal(|| Option::<String>::None);
+    let free_hidden = use_signal(|| false);
     let Some(refused) = open() else { return rsx! {} };
     let current = status();
-    let asks_number = matches!(current, Status::Free | Status::Unknown(_));
+    let asks_number = matches!(current, Status::Free | Status::Unknown(_)) || current.free_credits().is_some();
+    let offers_free = matches!(current, Status::Free | Status::Unknown(_)) && !free_hidden();
     let left = pro.exported.read().left();
     let close = move || {
         let (mut open, mut problem) = (open, problem);
@@ -296,6 +325,26 @@ pub fn ProDialog() -> Element {
             busy.set(false);
         });
     };
+    let ask_free = move || {
+        let email = free_email.peek().clone();
+        if email.trim().is_empty() || *busy.peek() {
+            return;
+        }
+        let mut busy = busy;
+        busy.set(true);
+        spawn(async move {
+            let (mut problem, mut free_note, mut free_hidden) = (problem, free_note, free_hidden);
+            match request_free_credits_async(email).await {
+                Ok(message) => {
+                    free_note.set(Some(format!("{message} Paste the licence number above when it arrives.")));
+                    problem.set(None);
+                }
+                Err(polishcast_core::license::FreeError::Unavailable) => free_hidden.set(true),
+                Err(polishcast_core::license::FreeError::Refused(e)) => problem.set(Some(e)),
+            }
+            busy.set(false);
+        });
+    };
     let manage = move |number: String| {
         let mut busy = busy;
         busy.set(true);
@@ -316,6 +365,13 @@ pub fn ProDialog() -> Element {
                     Status::Pro(a) => rsx! {
                         p { strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } ". Every take can be exported." }
                         p { class: "hint", "{a.credits.left} AI credits left this month. {a.renewal()}." }
+                    },
+                    Status::NotPro(a) if a.is_free() => rsx! {
+                        p { "Free — " strong { "{a.credits.left} AI credits" } " left this month, for " strong { "{a.email}" } ". {a.renewal()}." }
+                        p { class: "hint",
+                            "The free version exports {FREE_EXPORTS} different takes. PolishCast Pro exports every take; it "
+                            "comes with a monthly plan on mayorana.ch."
+                        }
                     },
                     Status::NotPro(a) if !a.active => rsx! {
                         p { "The subscription for " strong { "{a.email}" } " isn't active." }
@@ -377,6 +433,39 @@ pub fn ProDialog() -> Element {
                         "day; Pro keeps working for a week without a connection."
                     }
                 }
+                if offers_free {
+                    div { class: "free-credits",
+                        p { class: "hint", "No plan? Get free AI credits every month, without Pro. The licence number comes by email." }
+                        div { class: "free-row",
+                            input {
+                                class: "licence-key",
+                                r#type: "email",
+                                spellcheck: "false",
+                                placeholder: "you@example.com",
+                                value: "{free_email}",
+                                oninput: move |e| {
+                                    let mut free_email = free_email;
+                                    free_email.set(e.value());
+                                },
+                                onkeydown: move |e: KeyboardEvent| {
+                                    e.stop_propagation();
+                                    match e.key() {
+                                        Key::Escape => close(),
+                                        Key::Enter => {
+                                            e.prevent_default();
+                                            ask_free();
+                                        }
+                                        _ => {}
+                                    }
+                                },
+                            }
+                            button { disabled: free_email.read().trim().is_empty() || busy(), onclick: move |_| ask_free(), "Get free AI credits" }
+                        }
+                        if let Some(n) = free_note() {
+                            p { class: "hint", "{n}" }
+                        }
+                    }
+                }
                 if let Some(p) = problem() {
                     p { class: "error", "{p}" }
                 }
@@ -400,7 +489,7 @@ pub fn ProDialog() -> Element {
                     }
                     if !matches!(current, Status::Pro(_)) {
                         a { class: "button-link", href: "{BUY_URL}", target: "_blank",
-                            if current.licence().is_some() { "Renew…" } else { "Buy PolishCast Pro…" }
+                            if current.licence().is_some() && current.free_credits().is_none() { "Renew…" } else { "Buy PolishCast Pro…" }
                         }
                     }
                     button { onclick: move |_| close(), if asks_number { "Cancel" } else { "Close" } }
