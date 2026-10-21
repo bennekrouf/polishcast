@@ -22,8 +22,6 @@ crossbeam-channel = "0.5"
 dirs = "6"
 dioxus = { version = "0.7", features = ["desktop"] }
 tokio = { version = "1", features = ["time"] }
-ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
-base64 = "0.22"
 
 # Decoding and rendering are far too slow unoptimised; keep debug builds usable.
 [profile.dev.package."*"]

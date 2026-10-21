@@ -1,43 +1,24 @@
 //! The PolishCast Pro licence on this computer, the free version's exports, and the Pro
-//! window. The check itself is offline, in `polishcast_core::license`.
+//! window. The licence number is kept with api0's last answer about it; what that answer
+//! unlocks is `polishcast_core::license`.
+//!
+//! ```text
+//! GET  https://gateway.api0.ai/v1/licence          the plan, its apps, credits left
+//! POST https://gateway.api0.ai/v1/licence/portal   { url } to change or cancel it
+//! Authorization: Bearer <licence>
+//! X-Client-App: small-video
+//! ```
 
-use base64::Engine;
 use dioxus::prelude::*;
-use polishcast_core::license::{self, Exported, License, FREE_EXPORTS};
+pub use polishcast_core::license::Status;
+use polishcast_core::license::{self, Answer, Exported, Saved, FREE_EXPORTS, PRODUCT};
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Where "Buy PolishCast Pro" leads.
 pub const BUY_URL: &str = "https://mayorana.ch/en/apps/polishcast";
 
-/// The public half of mayorana.ch's licence signing key (32 bytes, standard base64), built in
-/// by the release workflow from the `POLISHCAST_LICENSE_PUBLIC_KEY` variable.
-const PUBLIC_KEY: Option<&str> = option_env!("POLISHCAST_LICENSE_PUBLIC_KEY");
-
-/// This build's release date (`YYYY-MM-DD`), set by build.rs. Empty when unknown, which every
-/// licence covers.
-const RELEASE_DATE: &str = env!("POLISHCAST_RELEASE_DATE");
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Status {
-    /// No licence on this computer.
-    Free,
-    /// Licensed, and this build is covered.
-    Pro(License),
-    /// Licensed, but this build was released after the licence's updates ended.
-    Renew(License),
-    /// A build without the public key (a local build): licences can't be checked, and
-    /// nothing is limited.
-    Unavailable,
-}
-
-impl Status {
-    /// Whether every take can be exported. A build that can't check licences isn't limited
-    /// either: that is a build from source, or a release missing its key, and neither should
-    /// lock out someone who paid.
-    pub fn unlimited(&self) -> bool {
-        matches!(self, Status::Pro(_) | Status::Unavailable)
-    }
-}
+const GATEWAY: &str = "https://gateway.api0.ai";
 
 /// Shared by the sidebar's Pro button and the export panel.
 #[derive(Clone, Copy)]
@@ -104,48 +85,154 @@ fn data_dir() -> Option<PathBuf> {
     Some(dirs::data_local_dir()?.join("Small Video"))
 }
 
-fn public_key() -> Option<[u8; 32]> {
-    let bytes = base64::engine::general_purpose::STANDARD.decode(PUBLIC_KEY?.trim()).ok()?;
-    bytes.try_into().ok()
+fn licence_file() -> Option<PathBuf> {
+    Some(data_dir()?.join("licence.json"))
 }
 
-fn status_of(license: License) -> Status {
-    if license.covers(RELEASE_DATE) {
-        Status::Pro(license)
-    } else {
-        Status::Renew(license)
-    }
+fn now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-/// The licence saved on this computer, checked again at every start: a key that no longer
-/// verifies counts as none.
+fn load() -> Option<Saved> {
+    serde_json::from_str(&std::fs::read_to_string(licence_file()?).ok()?).ok()
+}
+
+fn save(saved: &Saved) -> Result<(), String> {
+    let f = licence_file().ok_or("No settings folder to keep the licence in.")?;
+    let json = serde_json::to_vec_pretty(saved).map_err(|e| e.to_string())?;
+    // Written beside the target and renamed over it, so a crash can't leave half a file.
+    let tmp = f.with_extension("tmp");
+    std::fs::create_dir_all(f.parent().unwrap())
+        .and_then(|_| std::fs::write(&tmp, json))
+        .and_then(|_| std::fs::rename(&tmp, &f))
+        .map_err(|e| format!("The licence couldn't be saved: {e}"))
+}
+
+/// The licence as of the last check, without asking api0.
 pub fn current() -> Status {
-    let Some(public) = public_key() else { return Status::Unavailable };
-    let Some(key) = data_dir().and_then(|d| std::fs::read_to_string(d.join("licence")).ok()) else {
-        return Status::Free;
-    };
-    match license::verify(&key, &public) {
-        Ok(l) => status_of(l),
-        Err(_) => Status::Free,
+    license::status_at(load().as_ref(), now())
+}
+
+/// Why a check didn't give an answer.
+enum CheckError {
+    /// api0 doesn't know this licence number.
+    Unknown,
+    /// Offline, api0 down, or an answer that made no sense.
+    Unreachable(String),
+}
+
+fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(20)))
+        .http_status_as_error(false)
+        .build()
+        .into()
+}
+
+fn ask(licence: &str) -> Result<Answer, CheckError> {
+    let mut resp = agent()
+        .get(format!("{GATEWAY}/v1/licence"))
+        .header("Authorization", format!("Bearer {licence}"))
+        .header("X-Client-App", PRODUCT)
+        .call()
+        .map_err(|e| CheckError::Unreachable(e.to_string()))?;
+    match resp.status().as_u16() {
+        200 => {
+            let body = resp.body_mut().read_to_string().map_err(|e| CheckError::Unreachable(e.to_string()))?;
+            serde_json::from_str(&body).map_err(|e| CheckError::Unreachable(e.to_string()))
+        }
+        401 => Err(CheckError::Unknown),
+        code => Err(CheckError::Unreachable(format!("api0 answered {code}"))),
     }
 }
 
-/// Checks `key` and, if it is a PolishCast licence, saves it for the next starts.
-pub fn activate(key: &str) -> Result<Status, String> {
-    let public = public_key().ok_or("This build of PolishCast can't check licences. Download it from mayorana.ch.")?;
-    let license = license::verify(key, &public).map_err(|e| e.to_string())?;
-    let dir = data_dir().ok_or("No settings folder to keep the licence in.")?;
-    let key: String = key.chars().filter(|c| !c.is_whitespace()).collect();
-    std::fs::create_dir_all(&dir)
-        .and_then(|_| std::fs::write(dir.join("licence"), key))
-        .map_err(|e| format!("The licence couldn't be saved: {e}"))?;
-    Ok(status_of(license))
+/// Checks `typed` with api0 and, if api0 knows it, saves it. Blocking.
+fn activate(typed: &str) -> Result<Status, String> {
+    let licence = license::normalise(typed)
+        .ok_or("This isn't a licence number. It has 20 letters and digits, like ABCDE-FGHJK-LMNPQ-RSTUV.")?;
+    let answer = match ask(&licence) {
+        Ok(a) => a,
+        Err(CheckError::Unknown) => return Err("This licence number isn't known. Check it against the email.".into()),
+        Err(CheckError::Unreachable(e)) => {
+            return Err(format!("The licence couldn't be checked ({e}). Check the connection and try again."))
+        }
+    };
+    let saved = Saved { licence, answer: Some(answer), checked: now() };
+    save(&saved)?;
+    Ok(license::status_at(Some(&saved), now()))
+}
+
+/// Checks the saved licence with api0 again, when `force`d or a day after the last check,
+/// and keeps the answer. Offline, the last answer stands. Blocking.
+fn refresh(force: bool) -> Status {
+    let Some(mut saved) = load() else { return Status::Free };
+    if !force && !license::check_due(&saved, now()) {
+        return license::status_at(Some(&saved), now());
+    }
+    match ask(&saved.licence) {
+        Ok(answer) => {
+            saved.answer = Some(answer);
+            saved.checked = now();
+            let _ = save(&saved);
+        }
+        Err(CheckError::Unknown) => {
+            saved.answer = None;
+            let _ = save(&saved);
+        }
+        Err(CheckError::Unreachable(_)) => {}
+    }
+    license::status_at(Some(&saved), now())
+}
+
+/// The address of the page where the subscription is changed or cancelled. Blocking.
+fn portal_url(licence: &str) -> Result<String, String> {
+    #[derive(serde::Deserialize)]
+    struct Portal {
+        url: String,
+    }
+    let failed = |e: String| format!("The subscription page couldn't be opened ({e}).");
+    let mut resp = agent()
+        .post(format!("{GATEWAY}/v1/licence/portal"))
+        .header("Authorization", format!("Bearer {licence}"))
+        .header("X-Client-App", PRODUCT)
+        .send_empty()
+        .map_err(|e| failed(e.to_string()))?;
+    if resp.status().as_u16() != 200 {
+        return Err(failed(format!("api0 answered {}", resp.status().as_u16())));
+    }
+    let body = resp.body_mut().read_to_string().map_err(|e| failed(e.to_string()))?;
+    serde_json::from_str::<Portal>(&body).map(|p| p.url).map_err(|e| failed(e.to_string()))
+}
+
+/// `refresh`, off the UI thread.
+pub async fn refresh_async(force: bool) -> Status {
+    tokio::task::spawn_blocking(move || refresh(force)).await.unwrap_or_else(|_| current())
+}
+
+async fn activate_async(typed: String) -> Result<Status, String> {
+    tokio::task::spawn_blocking(move || activate(&typed)).await.map_err(|e| e.to_string())?
+}
+
+async fn portal_url_async(licence: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || portal_url(&licence)).await.map_err(|e| e.to_string())?
+}
+
+/// Opens `url` in the default browser.
+fn open_url(url: &str) {
+    use std::process::Command;
+    let _ = if cfg!(target_os = "macos") {
+        Command::new("open").arg(url).spawn()
+    } else if cfg!(windows) {
+        Command::new("cmd").args(["/c", "start", "", url]).spawn()
+    } else {
+        Command::new("xdg-open").arg(url).spawn()
+    };
 }
 
 /// Removes the licence from this computer (to move it to another one).
 pub fn deactivate() {
-    if let Some(dir) = data_dir() {
-        let _ = std::fs::remove_file(dir.join("licence"));
+    if let Some(f) = licence_file() {
+        let _ = std::fs::remove_file(f);
     }
 }
 
@@ -163,7 +250,7 @@ fn save_exported(exported: &Exported) {
     }
 }
 
-/// The Pro window: what the free version allows, the licence key, and the way to buy one.
+/// The Pro window: what the free version allows, the plan, and the way to subscribe.
 #[component]
 pub fn ProDialog() -> Element {
     let pro = use_context::<Pro>();
@@ -171,8 +258,10 @@ pub fn ProDialog() -> Element {
     let open = pro.open;
     let mut key = use_signal(String::new);
     let mut problem = use_signal(|| Option::<String>::None);
+    let busy = use_signal(|| false);
     let Some(refused) = open() else { return rsx! {} };
     let current = status();
+    let asks_number = matches!(current, Status::Free | Status::Unknown(_));
     let left = pro.exported.read().left();
     let close = move || {
         let (mut open, mut problem) = (open, problem);
@@ -180,16 +269,43 @@ pub fn ProDialog() -> Element {
         problem.set(None);
     };
     let activate = move || {
-        let (mut status, mut key, mut problem) = (status, key, problem);
         let pasted = key.peek().clone();
-        match activate(&pasted) {
-            Ok(s) => {
-                status.set(s);
-                key.set(String::new());
-                problem.set(None);
-            }
-            Err(e) => problem.set(Some(e)),
+        if pasted.trim().is_empty() || *busy.peek() {
+            return;
         }
+        let mut busy = busy;
+        busy.set(true);
+        spawn(async move {
+            let (mut status, mut key, mut problem) = (status, key, problem);
+            match activate_async(pasted).await {
+                Ok(s) => {
+                    status.set(s);
+                    key.set(String::new());
+                    problem.set(None);
+                }
+                Err(e) => problem.set(Some(e)),
+            }
+            busy.set(false);
+        });
+    };
+    let check_again = move |_| {
+        let mut busy = busy;
+        busy.set(true);
+        spawn(async move {
+            status.set(refresh_async(true).await);
+            busy.set(false);
+        });
+    };
+    let manage = move |number: String| {
+        let mut busy = busy;
+        busy.set(true);
+        spawn(async move {
+            match portal_url_async(number).await {
+                Ok(url) => open_url(&url),
+                Err(e) => problem.set(Some(e)),
+            }
+            busy.set(false);
+        });
     };
 
     rsx! {
@@ -197,22 +313,27 @@ pub fn ProDialog() -> Element {
             div { class: "modal", onclick: move |e| e.stop_propagation(),
                 h2 { "PolishCast Pro" }
                 match &current {
-                    Status::Pro(l) => rsx! {
-                        p { "Licensed to " strong { "{l.email}" } ". Every take can be exported." }
-                        p { class: "hint", "Includes every update released until {l.updates_until}." }
+                    Status::Pro(a) => rsx! {
+                        p { strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } ". Every take can be exported." }
+                        p { class: "hint", "{a.credits.left} AI credits left this month. {a.renewal()}." }
                     },
-                    Status::Renew(l) => rsx! {
-                        p { "Licensed to " strong { "{l.email}" } "." }
+                    Status::NotPro(a) if !a.active => rsx! {
+                        p { "The subscription for " strong { "{a.email}" } " isn't active." }
+                        p { class: "error", "PolishCast runs as the free version. Renew it to have Pro again." }
+                    },
+                    Status::NotPro(a) => rsx! {
+                        p { "The " strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } " doesn't include PolishCast." }
+                        p { class: "error", "PolishCast runs as the free version. A plan with PolishCast makes it Pro." }
+                    },
+                    Status::Offline(a) => rsx! {
+                        p { strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } "." }
                         p { class: "error",
-                            "This version was released on {RELEASE_DATE}, after your updates ended on {l.updates_until}. "
-                            "Renew to use it, or keep using a version released before that day."
+                            "PolishCast hasn't been able to check the licence for a week, so it runs as the free "
+                            "version until it can. Check the connection, then check again."
                         }
                     },
-                    Status::Unavailable => rsx! {
-                        p { class: "hint",
-                            "This build of PolishCast can't check licences, and exports every take. "
-                            "Download PolishCast from mayorana.ch to use a licence."
-                        }
+                    Status::Unknown(_) => rsx! {
+                        p { class: "error", "The licence number on this computer isn't known. Check it against the email, or paste it again." }
                     },
                     Status::Free => rsx! {
                         if refused.is_some() {
@@ -220,17 +341,17 @@ pub fn ProDialog() -> Element {
                         }
                         p {
                             "The free version exports {FREE_EXPORTS} different takes; exporting one of them again "
-                            "is free. Recording and editing are never limited. PolishCast Pro exports every take."
+                            "is free. Recording and editing are never limited. PolishCast Pro exports every take; "
+                            "it comes with a monthly plan on mayorana.ch."
                         }
                         p { class: "hint", "Free exports left: {left} of {FREE_EXPORTS}" }
                     },
                 }
-                if matches!(current, Status::Free | Status::Renew(_)) {
-                    textarea {
+                if asks_number {
+                    input {
                         class: "licence-key",
-                        rows: "4",
                         spellcheck: "false",
-                        placeholder: "Paste the licence key from your purchase email",
+                        placeholder: "ABCDE-FGHJK-LMNPQ-RSTUV",
                         value: "{key}",
                         onmounted: move |e| async move {
                             let _ = e.set_focus(true).await;
@@ -251,12 +372,16 @@ pub fn ProDialog() -> Element {
                             }
                         },
                     }
-                    if let Some(p) = problem() {
-                        p { class: "error", "{p}" }
+                    p { class: "hint",
+                        "Paste the licence number from your plan's email. It's checked with api0 now and once a "
+                        "day; Pro keeps working for a week without a connection."
                     }
                 }
+                if let Some(p) = problem() {
+                    p { class: "error", "{p}" }
+                }
                 div { class: "modal-actions",
-                    if matches!(current, Status::Pro(_) | Status::Renew(_)) {
+                    if current.licence().is_some() {
                         button {
                             class: "left",
                             title: "Remove the licence from this computer, e.g. to use it on another one",
@@ -267,14 +392,20 @@ pub fn ProDialog() -> Element {
                             "Remove from this computer"
                         }
                     }
+                    if let (Some(number), false) = (current.licence().map(str::to_owned), asks_number) {
+                        button { disabled: busy(), title: "Change or cancel the plan on mayorana.ch", onclick: move |_| manage(number.clone()),
+                            "Manage subscription…"
+                        }
+                        button { disabled: busy(), onclick: check_again, "Check again" }
+                    }
                     if !matches!(current, Status::Pro(_)) {
                         a { class: "button-link", href: "{BUY_URL}", target: "_blank",
-                            if matches!(current, Status::Renew(_)) { "Renew…" } else { "Buy PolishCast Pro…" }
+                            if current.licence().is_some() { "Renew…" } else { "Buy PolishCast Pro…" }
                         }
                     }
-                    button { onclick: move |_| close(), if matches!(current, Status::Pro(_)) { "Close" } else { "Cancel" } }
-                    if matches!(current, Status::Free | Status::Renew(_)) {
-                        button { class: "primary", disabled: key.read().trim().is_empty(), onclick: move |_| activate(), "Activate" }
+                    button { onclick: move |_| close(), if asks_number { "Cancel" } else { "Close" } }
+                    if asks_number {
+                        button { class: "primary", disabled: key.read().trim().is_empty() || busy(), onclick: move |_| activate(), "Activate" }
                     }
                 }
             }

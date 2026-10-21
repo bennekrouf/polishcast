@@ -88,6 +88,15 @@ pub fn App() -> Element {
     let recorder = use_hook(Recorder::spawn);
     let pro = use_context_provider(crate::licence::Pro::new);
     let mut mcp_open = use_context_provider(|| crate::mcp::McpOpen(Signal::new(false))).0;
+    // The licence is checked with api0 at start, then once a day.
+    use_future(move || async move {
+        let mut status = pro.status;
+        status.set(crate::licence::refresh_async(true).await);
+        loop {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+            status.set(crate::licence::refresh_async(false).await);
+        }
+    });
     // Delayed and best-effort: a release check is never worth slowing a cold start, and a
     // failed one is not worth mentioning. Dismissed for this session only.
     let mut update = use_signal(|| Option::<crate::update_check::UpdateInfo>::None);
@@ -428,9 +437,8 @@ pub fn App() -> Element {
                     let mut open = pro.open;
                     let (label, title) = match *pro.status.read() {
                         crate::licence::Status::Pro(_) => ("Pro \u{2713}", "PolishCast Pro is active on this computer"),
-                        crate::licence::Status::Renew(_) => ("Renew Pro\u{2026}", "Your Pro updates ended before this version"),
-                        crate::licence::Status::Unavailable => ("Pro", "This build exports every take"),
-                        crate::licence::Status::Free => ("Get Pro\u{2026}", "Buy PolishCast Pro, or paste your licence key"),
+                        crate::licence::Status::Free => ("Get Pro\u{2026}", "Subscribe to PolishCast Pro, or paste your licence number"),
+                        _ => ("Renew Pro\u{2026}", "Your licence doesn't make this PolishCast Pro right now"),
                     };
                     rsx! {
                         div { class: "sidebar-buttons",

@@ -1,87 +1,166 @@
-//! PolishCast Pro licences, checked offline, and the free version's ten exports.
+//! PolishCast Pro: what a subscription licence unlocks, from api0's last answer about it, and
+//! the free version's ten exports.
 //!
-//! mayorana.ch signs each licence when it is bought with a private Ed25519 key; the app holds
-//! the public half and checks the signature, so no account, network or activation is
-//! involved. The key a buyer pastes is
-//!
-//! ```text
-//! <base64url(payload JSON)>.<base64url(signature of those bytes)>
-//! ```
-//!
-//! with the payload `{"v":1,"id","product","edition","email","issued","updates_until"}` — the
-//! same format as TrackCut's and GitAgent's. A licence unlocks every release dated up to
-//! `updates_until`, and keeps unlocking those releases after that day.
+//! Pro comes with a monthly plan bought on mayorana.ch. The plan's licence number
+//! (`ABCDE-FGHJK-LMNPQ-RSTUV`, emailed when it is bought) is checked with api0
+//! (`GET https://gateway.api0.ai/v1/licence`) when PolishCast starts and then daily; the
+//! answer names the plan, the apps it makes Pro, whether it is paid up and the AI credits
+//! left. The app keeps the last answer, so Pro lasts [`GRACE`] after the last check that
+//! got through. The network and the file are the app's; this is the rule.
 //!
 //! Without Pro, [`FREE_EXPORTS`] different takes can be exported. Exporting one of them again
 //! (after changing a zoom, say) doesn't count again; recording and editing are never limited.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine;
-use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
-/// The product id in every PolishCast licence. The app was called Small Video when the first
-/// keys were sold, and a key names its product, so the id stays.
+/// The product id api0 knows PolishCast by. The app was called Small Video when plans were
+/// first set up, so the id stays.
 pub const PRODUCT: &str = "small-video";
+
+/// How often the licence is checked while PolishCast is open.
+pub const CHECK_EVERY: Duration = Duration::from_secs(24 * 3600);
+
+/// How long Pro lasts without a check getting through (offline, api0 down).
+pub const GRACE: Duration = Duration::from_secs(7 * 24 * 3600);
 
 /// How many different takes the free version exports.
 pub const FREE_EXPORTS: usize = 10;
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-pub struct License {
-    pub id: String,
-    pub product: String,
-    pub edition: String,
-    pub email: String,
-    /// `YYYY-MM-DD`.
-    pub issued: String,
-    /// `YYYY-MM-DD`: the last release date this licence unlocks.
-    pub updates_until: String,
+const ALPHABET: &str = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/// A licence number as typed — any case, spaces or dashes — in the form api0 stores it,
+/// or `None` if it can't be one.
+pub fn normalise(typed: &str) -> Option<String> {
+    let chars: String =
+        typed.chars().filter(|c| !c.is_whitespace() && *c != '-').map(|c| c.to_ascii_uppercase()).collect();
+    if chars.len() != 20 || !chars.chars().all(|c| ALPHABET.contains(c)) {
+        return None;
+    }
+    Some(chars.as_bytes().chunks(5).map(|c| std::str::from_utf8(c).unwrap_or_default()).collect::<Vec<_>>().join("-"))
 }
 
-impl License {
-    /// Whether this licence unlocks a release made on `release_date` (`YYYY-MM-DD`). ISO dates
-    /// compare correctly as strings.
-    pub fn covers(&self, release_date: &str) -> bool {
-        release_date <= self.updates_until.as_str()
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Plan {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Credits {
+    #[serde(default)]
+    pub granted: i64,
+    #[serde(default)]
+    pub used: i64,
+    #[serde(default)]
+    pub left: i64,
+}
+
+/// api0's answer about a licence (`GET /v1/licence`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Answer {
+    #[serde(default)]
+    pub licence: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub plan: Plan,
+    /// The apps the plan makes Pro, by product id; "*" is every app.
+    #[serde(default)]
+    pub products: Vec<String>,
+    /// Paid up. False once the subscription lapses or is cancelled.
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub cancel_at_period_end: bool,
+    /// When the current month ends (RFC 3339).
+    #[serde(default)]
+    pub period_end: String,
+    #[serde(default)]
+    pub credits: Credits,
+    #[serde(default)]
+    pub checked_at: String,
+}
+
+impl Answer {
+    /// The plan is paid up and includes PolishCast.
+    pub fn unlocks(&self) -> bool {
+        self.active && self.products.iter().any(|p| p == PRODUCT || p == "*")
+    }
+
+    /// The day the current month ends, `YYYY-MM-DD`.
+    pub fn period_end_day(&self) -> &str {
+        self.period_end.get(..10).unwrap_or(&self.period_end)
+    }
+
+    /// "Renews on …", or "Ends on …" once cancelled.
+    pub fn renewal(&self) -> String {
+        let verb = if self.cancel_at_period_end { "Ends" } else { "Renews" };
+        format!("{verb} on {}", self.period_end_day())
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LicenseError {
-    /// Not something a licence key looks like (truncated, or not a key at all).
-    Malformed,
-    /// Well-formed, but not signed by mayorana.ch: edited, or made up.
-    BadSignature,
-    /// A genuine licence, for another app.
-    OtherProduct(String),
+/// What the app keeps: the licence number, and api0's last answer with when it came
+/// (seconds since 1970, this computer's clock).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Saved {
+    pub licence: String,
+    #[serde(default)]
+    pub answer: Option<Answer>,
+    #[serde(default)]
+    pub checked: u64,
 }
 
-impl std::fmt::Display for LicenseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Status {
+    /// No licence on this computer.
+    Free,
+    /// The plan includes PolishCast and is paid up, as of a check within [`GRACE`].
+    Pro(Answer),
+    /// Checked: the plan has lapsed, or doesn't include PolishCast.
+    NotPro(Answer),
+    /// Pro at the last check, but no check has got through for [`GRACE`].
+    Offline(Answer),
+    /// A licence number api0 doesn't know, or one not checked yet.
+    Unknown(String),
+}
+
+impl Status {
+    /// Whether every take can be exported.
+    pub fn unlimited(&self) -> bool {
+        matches!(self, Status::Pro(_))
+    }
+
+    /// The saved licence number, if any.
+    pub fn licence(&self) -> Option<&str> {
         match self {
-            Self::Malformed => write!(f, "This isn't a complete licence key. Copy the whole key from the email."),
-            Self::BadSignature => write!(f, "This licence key isn't valid."),
-            Self::OtherProduct(p) => write!(f, "This is a licence for {p}, not PolishCast."),
+            Status::Free => None,
+            Status::Pro(a) | Status::NotPro(a) | Status::Offline(a) => Some(&a.licence),
+            Status::Unknown(l) => Some(l),
         }
     }
 }
 
-/// The licence in `key`, if `public_key` signed it and it is for PolishCast. Whitespace is
-/// ignored, since keys pasted from an email are often wrapped.
-pub fn verify(key: &str, public_key: &[u8; 32]) -> Result<License, LicenseError> {
-    let key: String = key.chars().filter(|c| !c.is_whitespace()).collect();
-    let (body, signature) = key.split_once('.').ok_or(LicenseError::Malformed)?;
-    let payload = URL_SAFE_NO_PAD.decode(body).map_err(|_| LicenseError::Malformed)?;
-    let signature = URL_SAFE_NO_PAD.decode(signature).map_err(|_| LicenseError::Malformed)?;
-    let signature = Signature::from_slice(&signature).map_err(|_| LicenseError::Malformed)?;
-    let verifying = VerifyingKey::from_bytes(public_key).map_err(|_| LicenseError::BadSignature)?;
-    verifying.verify_strict(&payload, &signature).map_err(|_| LicenseError::BadSignature)?;
-    let license: License = serde_json::from_slice(&payload).map_err(|_| LicenseError::Malformed)?;
-    if license.product != PRODUCT {
-        return Err(LicenseError::OtherProduct(license.product));
+/// What `saved` amounts to at `now` (seconds since 1970).
+pub fn status_at(saved: Option<&Saved>, now: u64) -> Status {
+    let Some(saved) = saved else { return Status::Free };
+    let Some(answer) = saved.answer.clone() else { return Status::Unknown(saved.licence.clone()) };
+    if !answer.unlocks() {
+        Status::NotPro(answer)
+    } else if now.saturating_sub(saved.checked) > GRACE.as_secs() {
+        Status::Offline(answer)
+    } else {
+        Status::Pro(answer)
     }
-    Ok(license)
+}
+
+/// Whether the last check is old enough for another, at `now`.
+pub fn check_due(saved: &Saved, now: u64) -> bool {
+    saved.answer.is_none() || now.saturating_sub(saved.checked) >= CHECK_EVERY.as_secs()
 }
 
 /// The takes exported so far without Pro, by name (a take's folder name), in order.
@@ -116,38 +195,86 @@ impl Exported {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{Signer, SigningKey};
 
-    fn sign(json: &str, key: &SigningKey) -> String {
-        format!("{}.{}", URL_SAFE_NO_PAD.encode(json), URL_SAFE_NO_PAD.encode(key.sign(json.as_bytes()).to_bytes()))
+    const DAY: u64 = 24 * 3600;
+
+    fn answer(products: &[&str], active: bool) -> Answer {
+        Answer {
+            licence: "ABCDE-FGHJK-LMNPQ-RSTUV".into(),
+            email: "anna@studio.ch".into(),
+            plan: Plan { id: "pro".into(), name: "Pro".into() },
+            products: products.iter().map(|p| p.to_string()).collect(),
+            active,
+            period_end: "2026-11-21T10:00:00Z".into(),
+            ..Answer::default()
+        }
     }
 
-    const PAYLOAD: &str = r#"{"v":1,"id":"lic_1","product":"small-video","edition":"pro","email":"anna@studio.ch","issued":"2026-10-09","updates_until":"2027-10-09"}"#;
-
-    #[test]
-    fn a_signed_key_is_accepted_even_when_wrapped_by_an_email() {
-        let signer = SigningKey::from_bytes(&[7u8; 32]);
-        let key = sign(PAYLOAD, &signer);
-        let (a, b) = key.split_at(40);
-        let license = verify(&format!(" {a}\n{b}\n"), &signer.verifying_key().to_bytes()).unwrap();
-        assert_eq!(license.email, "anna@studio.ch");
-        assert!(license.covers("2027-10-09"));
-        assert!(!license.covers("2027-10-10"));
+    fn saved(answer: Answer, checked: u64) -> Saved {
+        Saved { licence: answer.licence.clone(), answer: Some(answer), checked }
     }
 
     #[test]
-    fn forged_edited_junk_and_other_product_keys_are_refused() {
-        let signer = SigningKey::from_bytes(&[7u8; 32]);
-        let public = signer.verifying_key().to_bytes();
-        let forger = SigningKey::from_bytes(&[8u8; 32]);
-        assert_eq!(verify(&sign(PAYLOAD, &forger), &public), Err(LicenseError::BadSignature));
-        let key = sign(PAYLOAD, &signer);
-        let (_, sig) = key.split_once('.').unwrap();
-        let edited = URL_SAFE_NO_PAD.encode(PAYLOAD.replace("2027", "2099"));
-        assert_eq!(verify(&format!("{edited}.{sig}"), &public), Err(LicenseError::BadSignature));
-        assert_eq!(verify("hello", &public), Err(LicenseError::Malformed));
-        let other = sign(&PAYLOAD.replace("small-video", "splitter"), &signer);
-        assert_eq!(verify(&other, &public), Err(LicenseError::OtherProduct("splitter".into())));
+    fn licence_numbers_are_read_in_any_case_with_spaces_or_dashes() {
+        let want = Some("ABCDE-FGHJK-LMNPQ-RSTUV".to_string());
+        assert_eq!(normalise("ABCDE-FGHJK-LMNPQ-RSTUV"), want);
+        assert_eq!(normalise(" abcde fghjk\nlmnpq-rstuv "), want);
+        assert_eq!(normalise("ABCDEFGHJKLMNPQRSTUV"), want);
+        assert_eq!(normalise("ABCDE-FGHJK-LMNPQ"), None);
+        // 0, 1, I and O look alike, so licence numbers never use them.
+        assert_eq!(normalise("ABCDE-FGHJK-LMNPQ-RSTU0"), None);
+        assert_eq!(normalise("ABCDE-FGHJK-LMNPQ-RSTUI"), None);
+    }
+
+    #[test]
+    fn pro_needs_an_active_plan_that_lists_polishcast_or_every_app() {
+        assert!(answer(&["small-video"], true).unlocks());
+        assert!(answer(&["gitagent", "*"], true).unlocks());
+        assert!(!answer(&["gitagent", "jobscout"], true).unlocks());
+        assert!(!answer(&["small-video"], false).unlocks());
+
+        let now = 1_000 * DAY;
+        assert!(status_at(Some(&saved(answer(&["*"], true), now)), now).unlimited());
+        assert!(matches!(status_at(Some(&saved(answer(&["small-video"], false), now)), now), Status::NotPro(_)));
+        assert!(matches!(status_at(Some(&saved(answer(&["jobscout"], true), now)), now), Status::NotPro(_)));
+        assert_eq!(status_at(None, now), Status::Free);
+        let unchecked = Saved { licence: "ABCDE-FGHJK-LMNPQ-RSTUV".into(), ..Saved::default() };
+        assert!(!status_at(Some(&unchecked), now).unlimited());
+    }
+
+    #[test]
+    fn pro_lasts_seven_days_after_the_last_check_that_got_through() {
+        let checked = 1_000 * DAY;
+        let s = saved(answer(&["small-video"], true), checked);
+        assert!(status_at(Some(&s), checked + 6 * DAY).unlimited());
+        assert!(status_at(Some(&s), checked + 7 * DAY).unlimited());
+        let late = status_at(Some(&s), checked + 7 * DAY + 1);
+        assert!(matches!(late, Status::Offline(_)));
+        assert!(!late.unlimited());
+        // A clock set back doesn't take Pro away.
+        assert!(status_at(Some(&s), checked - DAY).unlimited());
+    }
+
+    #[test]
+    fn the_licence_is_checked_again_after_a_day() {
+        let checked = 1_000 * DAY;
+        let s = saved(answer(&["small-video"], true), checked);
+        assert!(!check_due(&s, checked + DAY - 1));
+        assert!(check_due(&s, checked + DAY));
+        assert!(check_due(&Saved { licence: s.licence.clone(), ..Saved::default() }, checked));
+    }
+
+    #[test]
+    fn api0s_answer_is_read() {
+        let json = r#"{"object":"licence","licence":"ABCDE-FGHJK-LMNPQ-RSTUV","email":"anna@studio.ch",
+            "plan":{"id":"studio","name":"Studio"},"products":["small-video"],"active":true,
+            "status":"active","cancel_at_period_end":false,"period_end":"2026-11-21T10:00:00Z",
+            "credits":{"granted":500,"used":120,"left":380},"checked_at":"2026-10-21T10:00:00Z"}"#;
+        let a: Answer = serde_json::from_str(json).unwrap();
+        assert!(a.unlocks());
+        assert_eq!(a.plan.name, "Studio");
+        assert_eq!(a.credits.left, 380);
+        assert_eq!(a.renewal(), "Renews on 2026-11-21");
     }
 
     #[test]

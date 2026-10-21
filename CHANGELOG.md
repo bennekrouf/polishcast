@@ -16,6 +16,19 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- PolishCast Pro now comes with a monthly plan on mayorana.ch instead of a
+  one-time licence key. Paste the licence number from the plan's email (like
+  ABCDE-FGHJK-LMNPQ-RSTUV) in the Pro window. PolishCast checks it when it
+  starts and once a day, and Pro keeps working for a week without a
+  connection.
+- The Pro window shows your plan, the AI credits left this month and when the
+  plan renews. Manage subscription opens the page where you change or cancel
+  it.
+
 ## [0.1.18] - 2026-10-20
 
 ### Added
