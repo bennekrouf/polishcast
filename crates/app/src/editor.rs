@@ -635,7 +635,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     StylePanel { doc, dir: dir.clone(), picture_url: picture_url.clone() }
                 }
                 BlanksPanel { doc, dir: dir.clone(), loudness }
-                ExportPanel { dir: dir.clone() }
+                ExportPanel { doc, dir: dir.clone() }
             }
         }
     }
@@ -1123,16 +1123,80 @@ enum Export {
     Failed(String),
 }
 
-/// Where a take's export goes: next to its folder, named after it.
-pub(crate) fn export_path(dir: &std::path::Path, format: Format) -> PathBuf {
-    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "PolishCast".into());
+/// The name suggested for an export: the take's, then what tells this export apart from the
+/// take's others (size, frame rate, shape, speed, whether the blanks are cut), then when it was
+/// made, so a new export never replaces an earlier one.
+pub(crate) fn export_name(
+    take: &str,
+    settings: Settings,
+    aspect: Aspect,
+    speed: f64,
+    blanks_cut: bool,
+    at: chrono::NaiveDateTime,
+) -> String {
+    let size = match settings.format {
+        Format::Mp4 => RESOLUTIONS
+            .iter()
+            .find(|(px, _)| *px == settings.long_side)
+            .map_or_else(|| format!("{}px", settings.long_side), |(_, name)| name.to_string()),
+        Format::Gif => format!("{}px", settings.long_side),
+    };
+    let mut parts = vec![take.to_string(), size, format!("{}fps", settings.fps)];
+    // ":" can't be in a file name on Windows, and shows as "/" in Finder.
+    match aspect {
+        Aspect::Source => {}
+        Aspect::Landscape16x9 => parts.push("16x9".into()),
+        Aspect::Portrait9x16 => parts.push("9x16".into()),
+        Aspect::Square => parts.push("1x1".into()),
+    }
+    parts.push(format!("{speed}x"));
+    parts.push(if blanks_cut { "blanks cut" } else { "with blanks" }.into());
+    format!("{} (exported {})", parts.join(" "), at.format("%Y-%m-%d %H.%M.%S"))
+}
+
+/// `name` as typed, made into a file name that works on macOS and Windows: no path separators or
+/// reserved characters, no extension typed by habit. `None` when nothing is left.
+pub(crate) fn clean_export_name(name: &str, format: Format) -> Option<String> {
+    let name = name.trim();
+    let name = name.strip_suffix(&format!(".{}", format.extension())).unwrap_or(name);
+    let name: String =
+        name.chars().map(|c| if c.is_control() || r#"/\:*?"<>|"#.contains(c) { '-' } else { c }).collect();
+    let name = name.trim_end_matches(['.', ' ']).trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// Where an export named `name` goes: next to the take's folder.
+pub(crate) fn export_path(dir: &std::path::Path, name: &str, format: Format) -> PathBuf {
     dir.with_file_name(format!("{name}.{}", format.extension()))
 }
 
+/// The videos exported from the take in `dir` that still carry its name: the one named exactly
+/// after it (as exports were before they were dated) and those named as `export_name` suggests.
+pub(crate) fn exports_of(dir: &std::path::Path) -> Vec<PathBuf> {
+    let (Some(take), Some(parent)) = (dir.file_name().map(|n| n.to_string_lossy().into_owned()), dir.parent()) else {
+        return Vec::new();
+    };
+    let Ok(read) = std::fs::read_dir(parent) else { return Vec::new() };
+    let mut found: Vec<PathBuf> = read
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| {
+            let ext = p.extension().and_then(|e| e.to_str());
+            let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            matches!(ext, Some("mp4" | "gif"))
+                && p.is_file()
+                && (stem == take || stem.strip_prefix(&take).is_some_and(|rest| rest.starts_with(' ')))
+        })
+        .collect();
+    found.sort();
+    found
+}
+
 #[component]
-fn ExportPanel(dir: PathBuf) -> Element {
+fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
     let mut settings = use_signal(Settings::default);
     let mut state = use_signal(|| Export::Idle);
+    // The name being chosen for the next export, while its dialog is open.
+    let mut naming = use_signal(|| None::<String>);
     let mut fraction = use_signal(|| 0.0f32);
     // ffmpeg is being fetched before the first export.
     let mut downloading = use_signal(|| false);
@@ -1170,8 +1234,9 @@ fn ExportPanel(dir: PathBuf) -> Element {
         }
     });
 
+    // Asks for the file's name, suggesting one.
     let start = {
-        let (dir, take) = (dir.clone(), take.clone());
+        let take = take.clone();
         move |_| {
             // Without Pro, a take not exported before needs a free export left.
             if !pro.may_export(&take) {
@@ -1179,10 +1244,23 @@ fn ExportPanel(dir: PathBuf) -> Element {
                 open.set(Some(Some(take.clone())));
                 return;
             }
+            let (aspect, speed, blanks_cut) = {
+                let p = doc.project.peek();
+                (p.style.aspect, p.speed, p.blanks.is_some())
+            };
+            let now = chrono::Local::now().naive_local();
+            naming.set(Some(export_name(&take, settings(), aspect, speed, blanks_cut, now)));
+        }
+    };
+
+    let export = {
+        let dir = dir.clone();
+        move |name: String| {
+            naming.set(None);
             let (progress, cancel) = (Arc::new(Progress::default()), Arc::new(AtomicBool::new(false)));
             let (tx, done) = mpsc::channel();
             let settings = settings();
-            let (dir, out) = (dir.clone(), export_path(&dir, settings.format));
+            let (dir, out) = (dir.clone(), export_path(&dir, &name, settings.format));
             let (p, c, target) = (progress.clone(), cancel.clone(), out.clone());
             std::thread::spawn(move || {
                 let _ = tx.send(polishcast_export::export(&dir, &target, settings, &p, &c));
@@ -1198,6 +1276,15 @@ fn ExportPanel(dir: PathBuf) -> Element {
     let (sizes, rates) = if gif { (GIF_SIZES, GIF_FRAME_RATES) } else { (RESOLUTIONS, FRAME_RATES) };
     let kind = if gif { "GIF" } else { "MP4" };
     rsx! {
+        if let Some(suggested) = naming() {
+            ExportDialog {
+                dir: dir.clone(),
+                suggested,
+                format: current.format,
+                on_close: move |_| naming.set(None),
+                on_confirm: export,
+            }
+        }
         div { class: "export",
             h2 { "Export" }
             div { class: "segmented",
@@ -1297,6 +1384,68 @@ fn ExportPanel(dir: PathBuf) -> Element {
                         }
                     }
                 },
+            }
+        }
+    }
+}
+
+/// Asks what to call the export, next to the take's folder: Enter exports, Esc cancels.
+#[component]
+fn ExportDialog(
+    dir: PathBuf,
+    suggested: String,
+    format: Format,
+    on_close: EventHandler<()>,
+    on_confirm: EventHandler<String>,
+) -> Element {
+    let mut name = use_signal(|| suggested.clone());
+    let cleaned = clean_export_name(&name(), format);
+    let replaces = cleaned.as_deref().is_some_and(|n| export_path(&dir, n, format).exists());
+    let ext = format.extension();
+    let confirm = {
+        let cleaned = cleaned.clone();
+        move || {
+            if let Some(n) = cleaned.clone() {
+                on_confirm.call(n);
+            }
+        }
+    };
+    rsx! {
+        div { class: "modal-backdrop", onclick: move |_| on_close.call(()),
+            div { class: "modal", onclick: move |e| e.stop_propagation(),
+                h2 { "Export as" }
+                div { class: "export-name",
+                    input {
+                        r#type: "text",
+                        value: "{name}",
+                        spellcheck: "false",
+                        oninput: move |e| name.set(e.value()),
+                        onmounted: move |e| async move {
+                            let _ = e.set_focus(true).await;
+                        },
+                        onkeydown: {
+                            let confirm = confirm.clone();
+                            move |e: KeyboardEvent| {
+                                e.stop_propagation();
+                                match e.key() {
+                                    Key::Enter => confirm(),
+                                    Key::Escape => on_close.call(()),
+                                    _ => {}
+                                }
+                            }
+                        },
+                    }
+                    span { ".{ext}" }
+                }
+                if replaces {
+                    p { class: "error", "A file with this name is already there and will be replaced." }
+                } else {
+                    p { class: "hint", "Saved next to the take's folder." }
+                }
+                div { class: "modal-actions",
+                    button { onclick: move |_| on_close.call(()), "Cancel" kbd { "Esc" } }
+                    button { class: "primary", disabled: cleaned.is_none(), onclick: move |_| confirm(), "Export" kbd { "Enter" } }
+                }
             }
         }
     }
@@ -1439,5 +1588,56 @@ fn BlanksPanel(doc: Doc, dir: PathBuf, loudness: Signal<Measure>) -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at() -> chrono::NaiveDateTime {
+        chrono::NaiveDate::from_ymd_opt(2026, 10, 22).unwrap().and_hms_opt(15, 32, 10).unwrap()
+    }
+
+    #[test]
+    fn the_suggested_name_tells_exports_apart_and_dates_them() {
+        let take = "2026-10-03 10.00.12";
+        assert_eq!(
+            export_name(take, Settings::default(), Aspect::Source, 1.0, false, at()),
+            "2026-10-03 10.00.12 1080p 60fps 1x with blanks (exported 2026-10-22 15.32.10)"
+        );
+        let gif = Settings { format: Format::Gif, long_side: 960, fps: 15 };
+        assert_eq!(
+            export_name(take, gif, Aspect::Landscape16x9, 1.5, true, at()),
+            "2026-10-03 10.00.12 960px 15fps 16x9 1.5x blanks cut (exported 2026-10-22 15.32.10)"
+        );
+    }
+
+    #[test]
+    fn a_typed_name_becomes_a_file_name() {
+        assert_eq!(clean_export_name("  demo.mp4 ", Format::Mp4).as_deref(), Some("demo"));
+        assert_eq!(clean_export_name("a/b: c?", Format::Gif).as_deref(), Some("a-b- c-"));
+        assert_eq!(clean_export_name("trailing. ", Format::Mp4).as_deref(), Some("trailing"));
+        assert_eq!(clean_export_name(" .mp4", Format::Mp4), None);
+    }
+
+    #[test]
+    fn a_takes_exports_are_found_by_its_name() {
+        let base = std::env::temp_dir().join(format!("polishcast-exports-{}", std::process::id()));
+        let dir = base.join("2026-10-03 10.00.12");
+        std::fs::create_dir_all(&dir).unwrap();
+        for f in [
+            "2026-10-03 10.00.12.mp4",
+            "2026-10-03 10.00.12 1080p 60fps (exported 2026-10-22 15.32.10).mp4",
+            "2026-10-03 10.00.12 960px 15fps (exported 2026-10-22 15.33.00).gif",
+            "2026-10-03 10.00.120.mp4",
+            "2026-10-03 10.00.12 notes.txt",
+        ] {
+            std::fs::write(base.join(f), b"").unwrap();
+        }
+        let found: Vec<String> =
+            exports_of(&dir).iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        std::fs::remove_dir_all(&base).unwrap();
+        assert_eq!(found.len(), 3, "{found:?}");
     }
 }

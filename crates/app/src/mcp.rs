@@ -12,7 +12,8 @@
 //! Requests are handled one at a time, so an export holds the next call until it is done.
 
 use crate::editor::{
-    cut_blanks, export_path, measure, toggle_clip, FRAME_RATES, GIF_FRAME_RATES, GIF_SIZES, RESOLUTIONS,
+    clean_export_name, cut_blanks, export_name, export_path, exports_of, measure, toggle_clip, FRAME_RATES,
+    GIF_FRAME_RATES, GIF_SIZES, RESOLUTIONS,
 };
 use crate::{licence, takes};
 use dioxus::prelude::*;
@@ -225,9 +226,10 @@ fn tools() -> Value {
         {
             "name": "export",
             "description": format!(
-                "Writes the video next to the take's folder, as \"<take>.mp4\" (with sound) or \"<take>.gif\" \
-                 (silent, looping). Takes about as long as the video on a recent Mac; ffmpeg is downloaded \
-                 first if none is installed. Sizes are pixels along the longer side: {mp4_sizes:?} for MP4, \
+                "Writes the video next to the take's folder, as an MP4 (with sound) or a GIF (silent, looping), \
+                 named after the take, its size, frame rate, shape, speed, whether the blanks are cut and \
+                 the time of the export, so it never replaces an earlier one; name sets another name. Takes \
+                 about as long as the video on a recent Mac; ffmpeg is downloaded first if none is installed. Sizes are pixels along the longer side: {mp4_sizes:?} for MP4, \
                  {gif_sizes:?} for GIF. The free version exports {} different takes.",
                 polishcast_core::license::FREE_EXPORTS
             ),
@@ -238,6 +240,7 @@ fn tools() -> Value {
                     "format": { "type": "string", "enum": ["mp4", "gif"] },
                     "size": { "type": "integer", "description": "Default 1920 for MP4, 960 for GIF." },
                     "fps": { "type": "integer", "description": format!("{FRAME_RATES:?} for MP4 (default 60), {GIF_FRAME_RATES:?} for GIF (default 15).") },
+                    "name": { "type": "string", "description": "The file's name, without extension. A file of that name is replaced." },
                 },
                 "required": ["take", "format"],
             },
@@ -319,15 +322,6 @@ fn round32(v: f32) -> f64 {
     round(f64::from(v))
 }
 
-fn exports_of(dir: &Path) -> Vec<String> {
-    [Format::Mp4, Format::Gif]
-        .into_iter()
-        .map(|f| export_path(dir, f))
-        .filter(|p| p.is_file())
-        .map(|p| p.display().to_string())
-        .collect()
-}
-
 fn aspect_name(a: Aspect) -> &'static str {
     match a {
         Aspect::Source => "screen",
@@ -393,7 +387,7 @@ fn describe(t: &Take, p: &Project) -> Value {
             "click_effect": s.click_effect,
             "hide_idle_cursor": s.hide_idle_cursor,
         },
-        "exported": exports_of(&t.dir),
+        "exported": exports_of(&t.dir).iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
     })
 }
 
@@ -406,7 +400,7 @@ fn list() -> Value {
             let mut v = json!({
                 "take": e.name,
                 "size_mb": (e.size as f64 / 1e6).round(),
-                "exported": exports_of(&e.dir),
+                "exported": exports_of(&e.dir).iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
             });
             if let Some(p) = &e.project {
                 v["recording_secs"] = json!(round(p.duration));
@@ -644,16 +638,19 @@ fn export(args: &Value) -> Result<Value, String> {
             licence::BUY_URL
         ));
     }
-    let out = export_path(&t.dir, format);
+    let settings = Settings { format, long_side, fps };
+    let file_name = match args["name"].as_str() {
+        Some(typed) => clean_export_name(typed, format).ok_or("name is empty")?,
+        None => {
+            let p = t.project()?;
+            let now = chrono::Local::now().naive_local();
+            export_name(&name, settings, p.style.aspect, p.speed, p.blanks.is_some(), now)
+        }
+    };
+    let out = export_path(&t.dir, &file_name, format);
     let started = std::time::Instant::now();
-    polishcast_export::export(
-        &t.dir,
-        &out,
-        Settings { format, long_side, fps },
-        &Progress::default(),
-        &AtomicBool::new(false),
-    )
-    .map_err(|e| format!("{e:#}"))?;
+    polishcast_export::export(&t.dir, &out, settings, &Progress::default(), &AtomicBool::new(false))
+        .map_err(|e| format!("{e:#}"))?;
     licence::count_export(&name);
     let mut v = json!({
         "file": out,

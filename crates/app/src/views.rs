@@ -678,7 +678,7 @@ fn RecordSettings(
 #[component]
 fn DeleteDialog(dir: PathBuf, on_close: EventHandler<()>, on_confirm: EventHandler<PathBuf>) -> Element {
     let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let exported = dir.with_file_name(format!("{name}.mp4")).is_file();
+    let exported = !crate::editor::exports_of(&dir).is_empty();
     let target = dir.clone();
     let confirm = move || on_confirm.call(target.clone());
     rsx! {
@@ -705,7 +705,7 @@ fn DeleteDialog(dir: PathBuf, on_close: EventHandler<()>, on_confirm: EventHandl
                 p { class: "delete-name", "{name}" }
                 p { class: "hint",
                     "The recording and its edits go to the system Trash, so you can still restore them from there."
-                    if exported { " The video you exported is not touched." }
+                    if exported { " The videos you exported are not touched." }
                 }
                 div { class: "modal-actions",
                     button { onclick: move |_| on_close.call(()), "Cancel" kbd { "Esc" } }
