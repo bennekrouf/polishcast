@@ -60,6 +60,8 @@ pub struct WindowInfo {
     /// The app it belongs to.
     pub app: String,
     pub title: String,
+    /// On the current Space; otherwise on another one, full screen, or minimized.
+    pub on_screen: bool,
 }
 
 /// Where the pointer is, in global points (origin at the main display's top-left).
@@ -95,6 +97,9 @@ pub struct Options {
     pub microphone: bool,
     /// Sound played by apps on the Mac.
     pub system_audio: bool,
+    /// Started with a click (a button, the menu bar, an area dragged) rather than the shortcut:
+    /// the pointer's way off it is left out of the take's project.
+    pub clicked: bool,
 }
 
 impl Default for Options {
@@ -106,6 +111,7 @@ impl Default for Options {
             max_width: None,
             microphone: true,
             system_audio: false,
+            clicked: false,
         }
     }
 }
@@ -122,6 +128,9 @@ pub struct Take {
     /// The sound apps played was recorded apart (`take::SOUND`), starting this many seconds
     /// into the screen recording (before it, if negative), and is still to be mixed in.
     pub sound: Option<f64>,
+    /// The stretch worth keeping, in seconds: without the pointer's way off the Record button
+    /// and to the Stop click.
+    pub kept: (f64, f64),
 }
 
 #[derive(Debug)]
@@ -134,7 +143,7 @@ pub enum Event {
 
 enum Cmd {
     Start { dir: PathBuf, options: Options },
-    Stop,
+    Stop { clicked: bool },
 }
 
 #[derive(Clone)]
@@ -160,7 +169,12 @@ impl Recorder {
     }
 
     pub fn stop(&self) {
-        let _ = self.tx.send(Cmd::Stop);
+        let _ = self.tx.send(Cmd::Stop { clicked: false });
+    }
+
+    /// Stops after a click on Stop, whose way there is left out of the take's project.
+    pub fn stop_clicked(&self) {
+        let _ = self.tx.send(Cmd::Stop { clicked: true });
     }
 
     pub fn try_event(&self) -> Option<Event> {
@@ -180,9 +194,9 @@ fn run(rx: Receiver<Cmd>, events: Sender<Event>) {
                 }
             },
             Cmd::Start { .. } => {}
-            Cmd::Stop => {
+            Cmd::Stop { clicked } => {
                 if let Some(a) = active.take() {
-                    let _ = events.send(match a.finish() {
+                    let _ = events.send(match a.finish(clicked) {
                         Ok(take) => Event::Finished(take),
                         Err(e) => Event::Failed(format!("{e:#}")),
                     });

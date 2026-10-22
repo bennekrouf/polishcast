@@ -1399,6 +1399,8 @@ fn ExportDialog(
     on_confirm: EventHandler<String>,
 ) -> Element {
     let mut name = use_signal(|| suggested.clone());
+    // Export was pressed on a name already taken: asks before replacing that file.
+    let mut asking = use_signal(|| false);
     let cleaned = clean_export_name(&name(), format);
     let replaces = cleaned.as_deref().is_some_and(|n| export_path(&dir, n, format).exists());
     let ext = format.extension();
@@ -1406,10 +1408,48 @@ fn ExportDialog(
         let cleaned = cleaned.clone();
         move || {
             if let Some(n) = cleaned.clone() {
-                on_confirm.call(n);
+                if replaces && !asking() {
+                    let mut asking = asking;
+                    asking.set(true);
+                } else {
+                    on_confirm.call(n);
+                }
             }
         }
     };
+    let file = cleaned.as_deref().map(|n| format!("{n}.{ext}")).unwrap_or_default();
+    if asking() {
+        return rsx! {
+            div { class: "modal-backdrop", onclick: move |_| asking.set(false),
+                div {
+                    class: "modal",
+                    tabindex: "0",
+                    onclick: move |e| e.stop_propagation(),
+                    onmounted: move |e| async move {
+                        let _ = e.set_focus(true).await;
+                    },
+                    onkeydown: {
+                        let confirm = confirm.clone();
+                        move |e: KeyboardEvent| {
+                            e.stop_propagation();
+                            match e.key() {
+                                Key::Enter => confirm(),
+                                Key::Escape => asking.set(false),
+                                _ => {}
+                            }
+                        }
+                    },
+                    h2 { "Replace the existing video?" }
+                    p { class: "delete-name", "{file}" }
+                    p { class: "hint", "A video with this name is already next to the take's folder. Replacing it can't be undone." }
+                    div { class: "modal-actions",
+                        button { onclick: move |_| asking.set(false), "Rename" kbd { "Esc" } }
+                        button { class: "danger", onclick: move |_| confirm(), "Replace" kbd { "Enter" } }
+                    }
+                }
+            }
+        };
+    }
     rsx! {
         div { class: "modal-backdrop", onclick: move |_| on_close.call(()),
             div { class: "modal", onclick: move |e| e.stop_propagation(),
@@ -1438,7 +1478,7 @@ fn ExportDialog(
                     span { ".{ext}" }
                 }
                 if replaces {
-                    p { class: "error", "A file with this name is already there and will be replaced." }
+                    p { class: "error", "A video with this name is already there. Export asks before replacing it." }
                 } else {
                     p { class: "hint", "Saved next to the take's folder." }
                 }
@@ -1604,7 +1644,7 @@ mod tests {
         let take = "2026-10-03 10.00.12";
         assert_eq!(
             export_name(take, Settings::default(), Aspect::Source, 1.0, false, at()),
-            "2026-10-03 10.00.12 1080p 60fps 1x with blanks (exported 2026-10-22 15.32.10)"
+            "2026-10-03 10.00.12 1080p 30fps 1x with blanks (exported 2026-10-22 15.32.10)"
         );
         let gif = Settings { format: Format::Gif, long_side: 960, fps: 15 };
         assert_eq!(

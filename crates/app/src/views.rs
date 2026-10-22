@@ -87,6 +87,10 @@ fn clock(d: Duration) -> String {
 pub fn App() -> Element {
     let recorder = use_hook(Recorder::spawn);
     let pro = use_context_provider(crate::licence::Pro::new);
+    // The title bar follows the licence, however it changes.
+    use_effect(move || {
+        dioxus::desktop::window().set_title(&crate::window_title(&pro.status.read()));
+    });
     let mut mcp_open = use_context_provider(|| crate::mcp::McpOpen(Signal::new(false))).0;
     // The licence is checked with api0 at start, then once a day.
     use_future(move || async move {
@@ -144,7 +148,10 @@ pub fn App() -> Element {
                 if chosen_window.peek().is_some_and(|id| !list.iter().any(|w| w.id == id)) {
                     chosen_window.set(None);
                 }
-                windows.set(list);
+                // Unchanged, the menu is left alone: rebuilding it would close it while open.
+                if *windows.peek() != list {
+                    windows.set(list);
+                }
             }
         });
     };
@@ -166,10 +173,11 @@ pub fn App() -> Element {
 
     let start = {
         let recorder = recorder.clone();
-        use_callback(move |source: Source| match takes::new_dir() {
+        use_callback(move |(source, clicked): (Source, bool)| match takes::new_dir() {
             Ok(dir) => {
                 error.set(None);
-                let options = Options { source, system_audio: settings.peek().system_audio, ..Options::default() };
+                let system_audio = settings.peek().system_audio;
+                let options = Options { source, system_audio, clicked, ..Options::default() };
                 recording_dir.set(Some(dir.clone()));
                 auto_stopped.set(None);
                 recorder.start(dir, options);
@@ -182,12 +190,13 @@ pub fn App() -> Element {
     let toggle = {
         let recorder = recorder.clone();
         let area_tx = area_tx.clone();
-        use_callback(move |()| match status() {
+        // `clicked`: from a button or the menu bar rather than the shortcut.
+        use_callback(move |clicked: bool| match status() {
             Status::Idle if picking() => {}
             Status::Idle => match settings.peek().source {
-                SourceKind::Screen => start(Source::Display),
+                SourceKind::Screen => start((Source::Display, clicked)),
                 SourceKind::Window => match chosen_window() {
-                    Some(id) => start(Source::Window(id)),
+                    Some(id) => start((Source::Window(id), clicked)),
                     None => {
                         error.set(Some("Choose the window to record first.".into()));
                         window().set_visible(true);
@@ -200,7 +209,11 @@ pub fn App() -> Element {
                 }
             },
             Status::Starting | Status::Recording(_) => {
-                recorder.stop();
+                if clicked {
+                    recorder.stop_clicked();
+                } else {
+                    recorder.stop();
+                }
                 status.set(Status::Saving);
             }
             Status::Saving => {}
@@ -213,7 +226,7 @@ pub fn App() -> Element {
     // 0.7 registers the window-menu one first. `use_tray_menu_event_handler` never fires.
     use_muda_event_handler(move |e| {
         if e.id == record_id {
-            toggle(());
+            toggle(true);
         } else if e.id == show_id {
             window().set_visible(true);
             window().set_focus();
@@ -229,7 +242,7 @@ pub fn App() -> Element {
     });
     let shortcut = use_global_shortcut(platform::SHORTCUT, move |state| {
         if state == dioxus::desktop::HotKeyState::Pressed {
-            toggle(());
+            toggle(false);
         }
     });
 
@@ -264,6 +277,14 @@ pub fn App() -> Element {
                 let mut tick = 0u64;
                 loop {
                     tick += 1;
+                    // Windows come and go: the list follows while it's on show (every 2 s).
+                    if tick.is_multiple_of(20)
+                        && *status.peek() == Status::Idle
+                        && settings.peek().source == SourceKind::Window
+                        && window().is_visible()
+                    {
+                        refresh_windows();
+                    }
                     // A forgotten recording stops before it fills the disk (checked every 2 s).
                     let current = *status.peek();
                     if let (Status::Recording(since), true) = (current, tick.is_multiple_of(20)) {
@@ -279,8 +300,9 @@ pub fn App() -> Element {
                     }
                     while let Ok(area) = area_rx.try_recv() {
                         picking.set(false);
+                        // The area was dragged: the pointer starts at its corner.
                         if let Some(area) = area {
-                            start(Source::Area(area));
+                            start((Source::Area(area), true));
                         }
                     }
                     while let Some(event) = recorder.try_event() {
@@ -403,7 +425,7 @@ pub fn App() -> Element {
                         class: if recording { "record compact on" } else { "record compact" },
                         title: "{label}",
                         disabled: status() == Status::Saving,
-                        onclick: move |_| toggle(()),
+                        onclick: move |_| toggle(true),
                         if recording { "■" } else { "●" }
                     }
                 }
@@ -422,7 +444,7 @@ pub fn App() -> Element {
                         button {
                             class: if recording { "record on" } else { "record" },
                             disabled: status() == Status::Saving,
-                            onclick: move |_| toggle(()),
+                            onclick: move |_| toggle(true),
                             "{label}"
                         }
                         button {
@@ -652,6 +674,7 @@ fn RecordSettings(
                                     value: "{w.id}",
                                     selected: chosen_window() == Some(w.id),
                                     if w.title.is_empty() { "{w.app}" } else { "{w.app} — {w.title}" }
+                                    if !w.on_screen { " (another Space or minimized)" }
                                 }
                             }
                         }

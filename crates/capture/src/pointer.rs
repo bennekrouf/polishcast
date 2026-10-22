@@ -91,6 +91,52 @@ pub fn event_log(raw: &Raw, started: Instant, origin: (f64, f64), size: (f64, f6
     log
 }
 
+/// No sample for this long: the pointer was resting.
+const RESTING: Duration = Duration::from_millis(250);
+/// Clicks this close together are one gesture (the menu bar item, then Stop in its menu).
+const CHAINED: Duration = Duration::from_secs(2);
+/// The most left out at either end.
+const MOST: Duration = Duration::from_secs(3);
+
+/// The stretch of the recording worth keeping, in seconds of recording, without the pointer's
+/// way off the Record button and its way to the Stop click. `start_clicked` and `stop_clicked`
+/// say whether recording was started and stopped with a click rather than the shortcut, which
+/// leaves nothing to see.
+pub fn kept(raw: &Raw, started: Instant, stopped: Instant, start_clicked: bool, stop_clicked: bool) -> (f64, f64) {
+    let secs = |at: Instant| at.saturating_duration_since(started).as_secs_f64();
+    let mut from = started;
+    if start_clicked {
+        // Moving as the first frame came: the run of movement that follows, while it lasts.
+        let mut moves = raw.moves.iter().map(|m| m.0).filter(|&at| at >= started).peekable();
+        if moves.peek().is_some_and(|&at| at - started < RESTING) {
+            for at in moves {
+                if at - from >= RESTING {
+                    break;
+                }
+                from = at;
+            }
+        }
+        from = from.min(started + MOST);
+    }
+    let mut to = stopped;
+    if stop_clicked {
+        let clicks: Vec<Instant> = raw.clicks.iter().map(|c| c.0).filter(|&at| at > from && at <= stopped).collect();
+        if let Some(&last) = clicks.last().filter(|&&at| stopped - at < CHAINED) {
+            // The first click of the gesture, then the run of movement that led to it.
+            let first = clicks.iter().rev().fold(last, |first, &at| if first - at < CHAINED { at } else { first });
+            let mut at = first;
+            for &(m, ..) in raw.moves.iter().rev().filter(|m| m.0 <= first) {
+                if at - m >= RESTING {
+                    break;
+                }
+                at = m;
+            }
+            to = at.max(first.checked_sub(MOST).unwrap_or(first)).max(from);
+        }
+    }
+    (secs(from), secs(to))
+}
+
 #[cfg(target_os = "macos")]
 mod sys {
     //! Core Graphics: positions in global display points, origin at the main display's
@@ -201,5 +247,44 @@ mod tests {
         assert_eq!(cursor, [(0.0, 0.125, 0.125), (200.0, 0.5, 0.5)], "the move at 50 ms is where it was at 0");
         assert_eq!(log.clicks.len(), 1, "the click before the first frame is dropped");
         assert_eq!(log.clicks[0].button, Button::Right);
+    }
+
+    /// Samples every 10 ms from `from` to `to` (ms after `t0`).
+    fn moving(t0: Instant, from: u64, to: u64) -> Vec<(Instant, f64, f64)> {
+        (from..=to).step_by(10).map(|ms| (t0 + Duration::from_millis(ms), ms as f64, 0.0)).collect()
+    }
+
+    #[test]
+    fn the_way_off_record_and_to_stop_is_left_out() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        // Leaves the button until 600 ms, works, rests, then heads for the menu bar at 9 s,
+        // clicks its item at 9.5 s and Stop in the menu at 10.2 s.
+        let moves = [moving(t0, 0, 600), moving(t0, 3_000, 4_000), moving(t0, 9_000, 9_500), moving(t0, 9_900, 10_200)];
+        let raw = Raw {
+            moves: moves.concat(),
+            clicks: vec![
+                (at(3_500), 0.0, 0.0, Button::Left),
+                (at(9_500), 0.0, 0.0, Button::Left),
+                (at(10_200), 0.0, 0.0, Button::Left),
+            ],
+        };
+        let (from, to) = kept(&raw, t0, at(10_300), true, true);
+        assert_eq!(((from * 1000.0).round(), (to * 1000.0).round()), (600.0, 9_000.0));
+
+        // With the shortcut there is nothing to leave out.
+        assert_eq!(kept(&raw, t0, at(10_300), false, false), (0.0, 10.3));
+        // Nor when the last click is long before Stop.
+        let (_, to) = kept(&raw, t0, at(15_000), false, true);
+        assert_eq!(to, 15.0);
+    }
+
+    #[test]
+    fn at_most_a_few_seconds_go() {
+        let t0 = Instant::now();
+        let raw =
+            Raw { moves: moving(t0, 0, 20_000), clicks: vec![(t0 + Duration::from_secs(20), 0.0, 0.0, Button::Left)] };
+        let (from, to) = kept(&raw, t0, t0 + Duration::from_secs(20), true, true);
+        assert_eq!((from, to), (3.0, 17.0));
     }
 }

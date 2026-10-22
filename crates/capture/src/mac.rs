@@ -50,6 +50,7 @@ pub struct Active {
     frame: CGRect,
     width: u32,
     height: u32,
+    clicked: bool,
 }
 
 fn sc<E: std::fmt::Debug>(what: &'static str) -> impl FnOnce(E) -> anyhow::Error {
@@ -59,7 +60,9 @@ fn sc<E: std::fmt::Debug>(what: &'static str) -> impl FnOnce(E) -> anyhow::Error
 const PERMISSION: &str =
     "Can't list the screens. Allow PolishCast in System Settings › Privacy & Security › Screen Recording";
 
-/// Windows worth offering: on screen, normal (not a menu or the Dock), big enough, not ours.
+/// Windows worth offering: normal (not a menu or the Dock), big enough, not ours. Besides those
+/// on screen, the titled ones elsewhere: on another Space, a full-screen app's, or set aside by
+/// Stage Manager. Untitled off-screen windows are mostly apps' hidden helpers.
 pub fn windows() -> Vec<WindowInfo> {
     let Ok(content) = SCShareableContent::get() else {
         return Vec::new();
@@ -68,14 +71,17 @@ pub fn windows() -> Vec<WindowInfo> {
     let mut out: Vec<WindowInfo> = content
         .windows()
         .iter()
-        .filter(|w| w.is_on_screen() && w.window_layer() == 0)
+        .filter(|w| w.window_layer() == 0)
         .filter(|w| w.frame().size.width >= 80.0 && w.frame().size.height >= 80.0)
         .filter_map(|w| {
             let app = w.owning_application()?;
-            (app.process_id() != me).then(|| WindowInfo {
+            let title = w.title().unwrap_or_default();
+            let on_screen = w.is_on_screen();
+            (app.process_id() != me && (on_screen || !title.trim().is_empty())).then(|| WindowInfo {
                 id: w.window_id(),
                 app: app.application_name(),
-                title: w.title().unwrap_or_default(),
+                title,
+                on_screen,
             })
         })
         .collect();
@@ -215,10 +221,11 @@ impl Active {
         } else {
             None
         };
-        Ok(Self { screen, sound, pointer, dir, frame, width, height })
+        Ok(Self { screen, sound, pointer, dir, frame, width, height, clicked: options.clicked })
     }
 
-    pub fn finish(self) -> Result<Take> {
+    pub fn finish(self, clicked: bool) -> Result<Take> {
+        let stopped_at = Instant::now();
         let stopped = (self.screen.stop(), self.sound.as_ref().map(Recording::stop));
         let raw = self.pointer.finish();
         let (started, duration) = self.screen.finished(stopped.0)?;
@@ -235,8 +242,10 @@ impl Active {
         let f = self.frame;
         let log = pointer::event_log(&raw, started, (f.origin.x, f.origin.y), (f.size.width, f.size.height));
         std::fs::write(self.dir.join(take::EVENTS), serde_json::to_vec(&log)?)?;
+        let (from, to) = pointer::kept(&raw, started, stopped_at, self.clicked, clicked);
+        let kept = (from.min(duration), to.min(duration));
         // ScreenCaptureKit's file output has no bitrate setting: worth shrinking afterwards.
-        Ok(Take { dir: self.dir, duration, width: self.width, height: self.height, compact: true, sound })
+        Ok(Take { dir: self.dir, duration, width: self.width, height: self.height, compact: true, sound, kept })
     }
 }
 

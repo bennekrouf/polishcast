@@ -49,7 +49,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { format: Format::Mp4, long_side: 1920, fps: 60 }
+        Self { format: Format::Mp4, long_side: 1920, fps: 30 }
     }
 }
 

@@ -1,7 +1,7 @@
 //! Takes on disk: one folder per recording under ~/Movies/PolishCast.
 
 use polishcast_capture::Take;
-use polishcast_core::{take, EventLog, Project};
+use polishcast_core::{clips, take, EventLog, Project};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -55,9 +55,32 @@ pub fn new_dir() -> std::io::Result<PathBuf> {
 pub fn create_project(t: &Take) -> std::io::Result<Project> {
     let events: EventLog =
         std::fs::read(t.dir.join(take::EVENTS)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-    let project = Project::new(t.duration, t.width, t.height, &events);
+    let project = new_project(t, events);
     project.save(&t.dir.join(take::PROJECT))?;
     Ok(project)
+}
+
+/// Shorter than this, a take keeps everything: what's left would be too little to work with.
+const LEAST_KEPT: f64 = 1.0;
+
+/// The project for a take: the pointer's way off Record and to Stop are removed clips (they
+/// can be put back), and their clicks suggest no zoom.
+fn new_project(t: &Take, mut events: EventLog) -> Project {
+    let (from, to) = t.kept;
+    let trims = to - from >= LEAST_KEPT;
+    if trims {
+        events.clicks.retain(|c| c.t >= from && c.t < to);
+    }
+    let mut project = Project::new(t.duration, t.width, t.height, &events);
+    if trims {
+        if clips::split(&mut project.splits, t.duration, from) {
+            clips::remove(&mut project.removed, (0.0, from));
+        }
+        if clips::split(&mut project.splits, t.duration, to) {
+            clips::remove(&mut project.removed, (to, t.duration));
+        }
+    }
+    project
 }
 
 #[derive(Clone, PartialEq)]
@@ -114,6 +137,32 @@ mod tests {
         std::fs::write(dir.join(take::SCREEN), b"not really a movie").unwrap();
         move_to_trash(&dir).unwrap();
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn the_start_and_stop_gestures_are_removed_clips() {
+        let take = |kept| Take {
+            dir: PathBuf::new(),
+            duration: 10.0,
+            width: 100,
+            height: 100,
+            compact: false,
+            sound: None,
+            kept,
+        };
+        let click = |t| polishcast_core::Click { t, x: 0.5, y: 0.5, button: polishcast_core::Button::Left };
+        let events = EventLog { cursor: Vec::new(), clicks: vec![click(5.0), click(9.5)] };
+
+        let p = new_project(&take((0.6, 9.0)), events.clone());
+        assert_eq!(p.splits, [0.6, 9.0]);
+        assert_eq!(p.removed, [(0.0, 0.6), (9.0, 10.0)]);
+        assert!(p.zooms.iter().all(|z| z.start < 9.0), "the Stop click suggests no zoom");
+
+        // Nothing to leave out, or almost nothing left: the take stays whole.
+        for kept in [(0.0, 10.0), (4.0, 4.5)] {
+            let p = new_project(&take(kept), events.clone());
+            assert!(p.splits.is_empty() && p.removed.is_empty());
+        }
     }
 
     #[test]
