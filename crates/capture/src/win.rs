@@ -121,6 +121,7 @@ pub struct Active {
     size: (f64, f64),
     width: u32,
     height: u32,
+    clicked: bool,
 }
 
 impl Active {
@@ -189,10 +190,11 @@ impl Active {
             size: (w as f64, h as f64),
             width,
             height,
+            clicked: options.clicked,
         })
     }
 
-    pub fn finish(self) -> Result<Take> {
+    pub fn finish(self, clicked: bool) -> Result<Take> {
         let stopped_at = Instant::now();
         drop(self.mic);
         let handler = self.control.callback();
@@ -216,7 +218,8 @@ impl Active {
         let log = pointer::event_log(&raw, started, self.origin, self.size);
         std::fs::write(self.dir.join(take::EVENTS), serde_json::to_vec(&log)?)?;
         let duration = stopped_at.saturating_duration_since(started).as_secs_f64();
-        Ok(Take { dir: self.dir, duration, width: self.width, height: self.height, compact: false, sound: None })
+        let kept = pointer::kept(&raw, started, stopped_at, self.clicked, clicked);
+        Ok(Take { dir: self.dir, duration, width: self.width, height: self.height, compact: false, sound: None, kept })
     }
 }
 

@@ -16,6 +16,27 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- A new take no longer starts with the pointer leaving the Record button, or
+  ends with it heading to Stop and the click on it. Those few seconds are set
+  aside as removed clips, so the take opens ready to use; put them back in
+  the timeline if you want them. Recordings started and stopped with the
+  keyboard shortcut are kept whole.
+- Export suggests 30 fps for MP4 instead of 60: smaller files that look the
+  same for most screen recordings. 60 fps is still one click away.
+- Exporting under a name that is already taken now stops and asks whether to
+  replace that video, instead of replacing it straight away.
+
+### Fixed
+
+- The window list under Window keeps itself up to date while PolishCast is
+  open: windows you open or close show up or go away within a couple of
+  seconds, without pressing ↻. It also lists windows on another Space and
+  those of apps in full screen, which were missing.
+
 ## [0.1.21] - 2026-10-22
 
 ### Changed

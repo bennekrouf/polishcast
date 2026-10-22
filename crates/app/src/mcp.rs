@@ -239,7 +239,7 @@ fn tools() -> Value {
                     "take": take_arg,
                     "format": { "type": "string", "enum": ["mp4", "gif"] },
                     "size": { "type": "integer", "description": "Default 1920 for MP4, 960 for GIF." },
-                    "fps": { "type": "integer", "description": format!("{FRAME_RATES:?} for MP4 (default 60), {GIF_FRAME_RATES:?} for GIF (default 15).") },
+                    "fps": { "type": "integer", "description": format!("{FRAME_RATES:?} for MP4 (default 30), {GIF_FRAME_RATES:?} for GIF (default 15).") },
                     "name": { "type": "string", "description": "The file's name, without extension. A file of that name is replaced." },
                 },
                 "required": ["take", "format"],

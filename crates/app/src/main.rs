@@ -27,7 +27,7 @@ fn main() {
         .with_data_directory(webview_data_dir())
         .with_window(
             WindowBuilder::new()
-                .with_title(concat!("PolishCast ", env!("CARGO_PKG_VERSION")))
+                .with_title(window_title(&licence::current()))
                 .with_inner_size(LogicalSize::new(1280.0, 820.0))
                 .with_window_icon(window_icon()),
         )
@@ -38,6 +38,11 @@ fn main() {
         // bring the window up. "Show PolishCast" does, and so does a finished take.
         .with_tray_icon_show_window_on_click(false);
     dioxus::LaunchBuilder::desktop().with_cfg(cfg).launch(views::App);
+}
+
+/// The native title bar, as in every mayorana app: name, version and licence.
+pub fn window_title(status: &licence::Status) -> String {
+    format!("PolishCast {}{}", env!("CARGO_PKG_VERSION"), status.title_badge())
 }
 
 /// Where the web view keeps its data. The default is next to the executable, which isn't
