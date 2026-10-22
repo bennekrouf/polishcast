@@ -462,3 +462,18 @@ button.update-banner-link { background: transparent; font: inherit; cursor: poin
 .mcp-copy { position: absolute; top: 6px; right: 6px; padding: 2px 10px; font-size: 12px; }
 .mcp-path, .mcp-note code { word-break: break-all; }
 .mcp-note { padding: 9px 11px; border-radius: 6px; background: var(--panel); }
+
+/* Export: the file's name */
+.export-name { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.export-name input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg, #18181b);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  user-select: text;
+  -webkit-user-select: text;
+}

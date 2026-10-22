@@ -217,6 +217,35 @@ pub fn check_due(saved: &Saved, now: u64) -> bool {
     saved.answer.is_none() || now.saturating_sub(saved.checked) >= CHECK_EVERY.as_secs()
 }
 
+/// What the licence file every Mayorana app shares says. One plan unlocks every app, so its
+/// number is typed once per computer: each app keeps only its own last answer from api0.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Shared {
+    /// No app has written it yet.
+    Missing,
+    /// Removed from this computer, in any app: none of them is licensed.
+    Removed,
+    Licence(String),
+}
+
+/// The shared file's text, read.
+pub fn shared_from(text: &str) -> Shared {
+    normalise(text).map_or(Shared::Removed, Shared::Licence)
+}
+
+/// This app's saved licence, brought in line with the shared one: a number typed in another
+/// app replaces this one (and its answer, to check again), and one removed there is removed
+/// here. `true` when this app's number should be shared, as it predates the shared file.
+pub fn reconcile(shared: Shared, own: Option<Saved>) -> (Option<Saved>, bool) {
+    match (shared, own) {
+        (Shared::Licence(l), Some(own)) if own.licence == l => (Some(own), false),
+        (Shared::Licence(licence), _) => (Some(Saved { licence, ..Saved::default() }), false),
+        (Shared::Removed, _) => (None, false),
+        (Shared::Missing, Some(own)) => (Some(own), true),
+        (Shared::Missing, None) => (None, false),
+    }
+}
+
 /// The takes exported so far without Pro, by name (a take's folder name), in order.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Exported {
@@ -378,5 +407,27 @@ mod tests {
         assert!(exported.allows("2026-10-03 10.00"), "a take already exported can be exported again");
         assert!(!exported.record("2026-10-03 10.00"));
         assert!(!exported.allows("2026-10-09 18.30"), "an eleventh take needs Pro");
+    }
+
+    #[test]
+    fn the_licence_typed_in_one_app_is_shared_with_every_other() {
+        let now = 1_000 * DAY;
+        let mine = saved(answer(&["*"], true), now);
+        let other = "BCDEF-GHJKL-MNPQR-STUVW".to_string();
+        // Already the same: this app's last answer stands.
+        assert_eq!(reconcile(Shared::Licence(mine.licence.clone()), Some(mine.clone())), (Some(mine.clone()), false));
+        // Typed in another app: taken, and checked again.
+        let (taken, share) = reconcile(Shared::Licence(other.clone()), Some(mine.clone()));
+        let taken = taken.unwrap();
+        assert!(!share);
+        assert_eq!(taken.licence, other);
+        assert!(check_due(&taken, now));
+        // Removed in another app: removed here too.
+        assert_eq!(reconcile(Shared::Removed, Some(mine.clone())), (None, false));
+        // Saved before the shared file existed: shared with the others.
+        assert_eq!(reconcile(Shared::Missing, Some(mine.clone())), (Some(mine), true));
+        assert_eq!(reconcile(Shared::Missing, None), (None, false));
+        assert_eq!(shared_from(" bcdef ghjkl mnpqr stuvw\n"), Shared::Licence(other));
+        assert_eq!(shared_from(""), Shared::Removed);
     }
 }

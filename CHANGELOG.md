@@ -16,6 +16,22 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- Export now asks what to call the video before it starts, and suggests a name
+  that says what it is: the take, its size, frame rate, shape and speed,
+  whether the pauses are cut, and when it was exported. Exporting the same
+  take again no longer replaces the video you exported before; if you pick a
+  name that is already taken, the window says so before anything is
+  overwritten.
+
+- One licence number for every Mayorana app on this computer. Paste it in any
+  of them and the others are Pro too the next time they start, with nothing to
+  paste again; a number already pasted in one app is shared the same way.
+  Removing the licence in the Pro window removes it from all of them.
+
 ## [0.1.20] - 2026-10-21
 
 ### Added
