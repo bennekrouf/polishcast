@@ -1461,12 +1461,17 @@ fn ExportDialog(
                             }
                         }
                     },
-                    h2 { "Replace the existing video?" }
-                    p { class: "delete-name", "{file}" }
-                    p { class: "hint", "A video with this name is already next to the take's folder. Replacing it can't be undone." }
-                    div { class: "modal-actions",
-                        button { onclick: move |_| asking.set(false), "Rename" kbd { "Esc" } }
-                        button { class: "danger", onclick: move |_| confirm(), "Replace" kbd { "Enter" } }
+                    div { class: "modal-head",
+                        h2 { "Replace the existing video?" }
+                        button { class: "modal-close", title: "Close", onclick: move |_| asking.set(false), "×" }
+                    }
+                    div { class: "modal-body",
+                        p { class: "delete-name", "{file}" }
+                        p { class: "hint", "A video with this name is already next to the take's folder. Replacing it can't be undone." }
+                        div { class: "modal-actions",
+                            button { onclick: move |_| asking.set(false), "Rename" kbd { "Esc" } }
+                            button { class: "danger", onclick: move |_| confirm(), "Replace" kbd { "Enter" } }
+                        }
                     }
                 }
             }
@@ -1475,38 +1480,43 @@ fn ExportDialog(
     rsx! {
         div { class: "modal-backdrop", onclick: move |_| on_close.call(()),
             div { class: "modal", onclick: move |e| e.stop_propagation(),
-                h2 { "Export as" }
-                div { class: "export-name",
-                    input {
-                        r#type: "text",
-                        value: "{name}",
-                        spellcheck: "false",
-                        oninput: move |e| name.set(e.value()),
-                        onmounted: move |e| async move {
-                            let _ = e.set_focus(true).await;
-                        },
-                        onkeydown: {
-                            let confirm = confirm.clone();
-                            move |e: KeyboardEvent| {
-                                e.stop_propagation();
-                                match e.key() {
-                                    Key::Enter => confirm(),
-                                    Key::Escape => on_close.call(()),
-                                    _ => {}
+                div { class: "modal-head",
+                    h2 { "Export as" }
+                    button { class: "modal-close", title: "Close", onclick: move |_| on_close.call(()), "×" }
+                }
+                div { class: "modal-body",
+                    div { class: "export-name",
+                        input {
+                            r#type: "text",
+                            value: "{name}",
+                            spellcheck: "false",
+                            oninput: move |e| name.set(e.value()),
+                            onmounted: move |e| async move {
+                                let _ = e.set_focus(true).await;
+                            },
+                            onkeydown: {
+                                let confirm = confirm.clone();
+                                move |e: KeyboardEvent| {
+                                    e.stop_propagation();
+                                    match e.key() {
+                                        Key::Enter => confirm(),
+                                        Key::Escape => on_close.call(()),
+                                        _ => {}
+                                    }
                                 }
-                            }
-                        },
+                            },
+                        }
+                        span { ".{ext}" }
                     }
-                    span { ".{ext}" }
-                }
-                if replaces {
-                    p { class: "error", "A video with this name is already there. Export asks before replacing it." }
-                } else {
-                    p { class: "hint", "Saved next to the take's folder." }
-                }
-                div { class: "modal-actions",
-                    button { onclick: move |_| on_close.call(()), "Cancel" kbd { "Esc" } }
-                    button { class: "primary", disabled: cleaned.is_none(), onclick: move |_| confirm(), "Export" kbd { "Enter" } }
+                    if replaces {
+                        p { class: "error", "A video with this name is already there. Export asks before replacing it." }
+                    } else {
+                        p { class: "hint", "Saved next to the take's folder." }
+                    }
+                    div { class: "modal-actions",
+                        button { onclick: move |_| on_close.call(()), "Cancel" kbd { "Esc" } }
+                        button { class: "primary", disabled: cleaned.is_none(), onclick: move |_| confirm(), "Export" kbd { "Enter" } }
+                    }
                 }
             }
         }

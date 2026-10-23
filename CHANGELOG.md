@@ -16,6 +16,17 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- Dialogs now have a title bar with a × to close them, and text fields have
+  the same size and typeface as in GitAgent.
+- An open dialog now dims the light/dark switch in the corner along with the
+  rest of the window, instead of leaving it lit on top.
+- The buttons along the top of the window now all have the same height,
+  borders included, and the light/dark switch matches them.
+
 ## [0.1.24] - 2026-10-23
 
 ### Changed

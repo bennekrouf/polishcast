@@ -724,15 +724,20 @@ fn DeleteDialog(dir: PathBuf, on_close: EventHandler<()>, on_confirm: EventHandl
                         }
                     }
                 },
-                h2 { "Move to the Trash?" }
-                p { class: "delete-name", "{name}" }
-                p { class: "hint",
-                    "The recording and its edits go to the system Trash, so you can still restore them from there."
-                    if exported { " The videos you exported are not touched." }
+                div { class: "modal-head",
+                    h2 { "Move to the Trash?" }
+                    button { class: "modal-close", title: "Close", onclick: move |_| on_close.call(()), "×" }
                 }
-                div { class: "modal-actions",
-                    button { onclick: move |_| on_close.call(()), "Cancel" kbd { "Esc" } }
-                    button { class: "danger", onclick: move |_| confirm(), "Move to Trash" kbd { "Enter" } }
+                div { class: "modal-body",
+                    p { class: "delete-name", "{name}" }
+                    p { class: "hint",
+                        "The recording and its edits go to the system Trash, so you can still restore them from there."
+                        if exported { " The videos you exported are not touched." }
+                    }
+                    div { class: "modal-actions",
+                        button { onclick: move |_| on_close.call(()), "Cancel" kbd { "Esc" } }
+                        button { class: "danger", onclick: move |_| confirm(), "Move to Trash" kbd { "Enter" } }
+                    }
                 }
             }
         }
