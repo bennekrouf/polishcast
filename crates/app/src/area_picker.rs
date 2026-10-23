@@ -12,7 +12,7 @@ const CSS: &str = r#"
 html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; }
 .picker {
   position: fixed; inset: 0; cursor: crosshair; outline: none;
-  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #fff;
+  font: 13px/1.4 'SF Mono', 'Menlo', 'Monaco', 'Cascadia Code', 'Fira Code', 'Consolas', monospace; color: #fff;
 }
 .picker.empty { background: rgba(0, 0, 0, 0.3); }
 .picker .hint {
