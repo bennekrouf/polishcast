@@ -3537,7 +3537,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3561,7 +3561,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-capture"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "anyhow",
  "cpal",
@@ -3575,7 +3575,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-core"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "serde",
  "serde_json",
@@ -3583,7 +3583,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-export"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3598,7 +3598,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-render"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "image",
  "polishcast-core",
