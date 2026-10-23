@@ -3,6 +3,7 @@
 //! with x264, yt-dlp's own builds on Windows and Martin Riedl's on macOS and Linux (FFmpeg
 //! publishes no binaries itself), checked against the SHA-256 sum published with each.
 
+use crate::http;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -82,9 +83,8 @@ pub fn ensure_ffmpeg(
 
 /// Where `url` redirects to (absolute).
 fn redirect_target(url: &str) -> Result<String, String> {
-    let agent: ureq::Agent =
-        ureq::Agent::config_builder().max_redirects(0).max_redirects_will_error(false).build().into();
-    let resp = agent.get(url).call().map_err(|e| format!("Could not reach {url}: {e}"))?;
+    let agent: ureq::Agent = http::config().max_redirects(0).max_redirects_will_error(false).build().into();
+    let resp = agent.get(url).call().map_err(|e| format!("Could not reach {url}: {}", http::describe(&e)))?;
     let location = resp
         .headers()
         .get("location")
@@ -100,10 +100,11 @@ fn redirect_target(url: &str) -> Result<String, String> {
 }
 
 fn get_text(url: &str) -> Result<String, String> {
-    ureq::get(url)
+    http::agent()
+        .get(url)
         .call()
         .and_then(|mut r| r.body_mut().read_to_string())
-        .map_err(|e| format!("Could not download {url}: {e}"))
+        .map_err(|e| format!("Could not download {url}: {}", http::describe(&e)))
 }
 
 /// The first 64-hex-digit word in `text` (Deno's sum files differ between platforms).
@@ -120,7 +121,7 @@ fn fetch_verified(
     cancelled: &dyn Fn() -> bool,
 ) -> Result<PathBuf, String> {
     let err = |e: &dyn std::fmt::Display| format!("Could not download {url}: {e}");
-    let mut resp = ureq::get(url).call().map_err(|e| err(&e))?;
+    let mut resp = http::agent().get(url).call().map_err(|e| err(&http::describe(&e)))?;
     let total = resp.headers().get("content-length").and_then(|v| v.to_str().ok()?.parse::<u64>().ok());
     let name = url.rsplit('/').next().unwrap_or("download");
     let tmp = dir.join(format!("{name}.part"));

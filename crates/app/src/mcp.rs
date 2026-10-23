@@ -744,7 +744,7 @@ pub fn McpDialog() -> Element {
 
 /// A block of text to paste somewhere else, with its own Copy button.
 #[component]
-fn Snippet(text: String) -> Element {
+pub(crate) fn Snippet(text: String) -> Element {
     let mut copied = use_signal(|| false);
     let to_copy = text.clone();
     rsx! {

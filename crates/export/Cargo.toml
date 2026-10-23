@@ -11,7 +11,9 @@ anyhow.workspace = true
 serde_json.workspace = true
 dirs.workspace = true
 tiny-skia = "0.12"
-# Installing ffmpeg on first use (download, verify, unzip), as in TrackCut.
-ureq = "3.4.2"
+# Installing ffmpeg on first use (download, verify, unzip), as in TrackCut. Every HTTPS
+# request in the app goes through `http`: platform-verifier checks certificates with the OS, so
+# a company proxy's root certificate (Zscaler and the like) is trusted.
+ureq = { version = "3.4.2", features = ["platform-verifier"] }
 sha2 = "0.11.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

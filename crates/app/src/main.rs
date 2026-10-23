@@ -4,6 +4,7 @@
 mod area_picker;
 mod editor;
 mod feedback;
+mod ffmpeg_help;
 mod licence;
 mod limits;
 mod mcp;

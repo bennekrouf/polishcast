@@ -3,6 +3,7 @@
 //! The preview is drawn by `assets/preview.js` from the frame track `render` computes; this
 //! component owns the project, its undo history and saving.
 
+use crate::ffmpeg_help::{self, FfmpegHelp};
 use crate::{media_server, platform};
 use dioxus::desktop::use_asset_handler;
 use dioxus::prelude::*;
@@ -232,18 +233,19 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
             }
         }
     });
-    // Lowering the music under the voice needs the recording's loudness: measured once.
+    // Lowering the music under the voice needs the recording's loudness: measured once, and
+    // again when Try again puts it back to Unknown.
     use_effect({
         let dir = dir.clone();
         move || {
-            if doc.project.read().duck.is_some() && *loudness.peek() == Measure::Unknown {
+            if doc.project.read().duck.is_some() && *loudness.read() == Measure::Unknown {
                 let (dir, mut loudness) = (dir.clone(), loudness);
                 loudness.set(Measure::Measuring);
                 spawn(async move {
                     loudness.set(match tokio::task::spawn_blocking(move || measure(&dir)).await {
                         Ok(Ok(Some(l))) => Measure::Ready(Rc::new(l)),
                         Ok(Ok(None)) => Measure::Silent,
-                        Ok(Err(e)) => Measure::Failed(format!("{e:#}")),
+                        Ok(Err(e)) => Measure::failed(&e),
                         Err(e) => Measure::Failed(e.to_string()),
                     });
                 });
@@ -1015,6 +1017,11 @@ fn MusicPanel(
                 Measure::Measuring => rsx! { p { class: "hint", "Listening for your voice…" } },
                 Measure::Silent => rsx! { p { class: "hint", "This recording has no sound, so there's no voice to make room for." } },
                 Measure::Failed(e) => rsx! { p { class: "error", "{e}" } },
+                Measure::NoFfmpeg(e) => rsx! {
+                    p { class: "error", "{e}" }
+                    FfmpegHelp {}
+                    button { onclick: move |_| loudness.set(Measure::Unknown), "Try again" }
+                },
                 _ => rsx! {},
             }
         }
@@ -1118,9 +1125,16 @@ pub(crate) const GIF_FRAME_RATES: &[u32] = &[10, 15, 24];
 
 enum Export {
     Idle,
-    Running { progress: Arc<Progress>, cancel: Arc<AtomicBool>, done: mpsc::Receiver<anyhow::Result<()>>, out: PathBuf },
+    Running {
+        progress: Arc<Progress>,
+        cancel: Arc<AtomicBool>,
+        done: mpsc::Receiver<anyhow::Result<()>>,
+        out: PathBuf,
+    },
     Done(PathBuf),
     Failed(String),
+    /// ffmpeg isn't installed and couldn't be downloaded: say how to install it.
+    NoFfmpeg(String),
 }
 
 /// The name suggested for an export: the take's, then what tells this export apart from the
@@ -1226,6 +1240,9 @@ fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
                             state.set(Export::Done(out));
                         }
                         Some((Err(e), _)) if e.is::<polishcast_export::Cancelled>() => state.set(Export::Idle),
+                        Some((Err(e), _)) if ffmpeg_help::is_missing(&e) => {
+                            state.set(Export::NoFfmpeg(format!("{e:#}")))
+                        }
                         Some((Err(e), _)) => state.set(Export::Failed(format!("{e:#}"))),
                         None => {}
                     }
@@ -1357,6 +1374,11 @@ fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
                 }
                 Export::Failed(e) => rsx! {
                     p { class: "error", "{e}" }
+                    button { class: "primary", onclick: start.clone(), "Try again" }
+                },
+                Export::NoFfmpeg(e) => rsx! {
+                    p { class: "error", "{e}" }
+                    FfmpegHelp {}
                     button { class: "primary", onclick: start.clone(), "Try again" }
                 },
                 Export::Idle => {
@@ -1501,6 +1523,18 @@ enum Measure {
     /// The recording has no sound: nothing to go by.
     Silent,
     Failed(String),
+    /// ffmpeg, which reads the sound, isn't installed and couldn't be downloaded.
+    NoFfmpeg(String),
+}
+
+impl Measure {
+    fn failed(e: &anyhow::Error) -> Self {
+        if ffmpeg_help::is_missing(e) {
+            Measure::NoFfmpeg(format!("{e:#}"))
+        } else {
+            Measure::Failed(format!("{e:#}"))
+        }
+    }
 }
 
 pub(crate) fn measure(dir: &std::path::Path) -> anyhow::Result<Option<Loudness>> {
@@ -1542,7 +1576,7 @@ fn BlanksPanel(doc: Doc, dir: PathBuf, loudness: Signal<Measure>) -> Element {
                     }
                 }
                 Ok(Ok(None)) => loudness.set(Measure::Silent),
-                Ok(Err(e)) => loudness.set(Measure::Failed(format!("{e:#}"))),
+                Ok(Err(e)) => loudness.set(Measure::failed(&e)),
                 Err(e) => loudness.set(Measure::Failed(e.to_string())),
             }
         });
@@ -1560,7 +1594,7 @@ fn BlanksPanel(doc: Doc, dir: PathBuf, loudness: Signal<Measure>) -> Element {
     let mut turn_on = move |dir: PathBuf| match loudness() {
         Measure::Ready(l) => doc.change(|p| cut_blanks(p, &l, p.blanks.unwrap_or_default())),
         Measure::Measuring | Measure::Silent => {}
-        Measure::Unknown | Measure::Failed(_) => start_measuring(dir, true),
+        Measure::Unknown | Measure::Failed(_) | Measure::NoFfmpeg(_) => start_measuring(dir, true),
     };
 
     // A slider moved: find the cuts again with the new settings (one undo step per drag).
@@ -1599,6 +1633,14 @@ fn BlanksPanel(doc: Doc, dir: PathBuf, loudness: Signal<Measure>) -> Element {
                 Measure::Measuring => rsx! { p { class: "hint", "Listening to the recording…" } },
                 Measure::Silent => rsx! { p { class: "hint", "This recording has no sound, so there are no pauses to find." } },
                 Measure::Failed(e) => rsx! { p { class: "error", "{e}" } },
+                Measure::NoFfmpeg(e) => {
+                    let dir = dir.clone();
+                    rsx! {
+                        p { class: "error", "{e}" }
+                        FfmpegHelp {}
+                        button { onclick: move |_| start_measuring(dir.clone(), true), "Try again" }
+                    }
+                }
                 _ => rsx! {},
             }
             if let Some(b) = params {

@@ -20,8 +20,8 @@ tokio = { workspace = true, features = ["rt"] }
 dirs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# The update check reads latest.json, and the licence is checked with api0 (the export crate
-# fetches ffmpeg with the same client).
+# The update check reads latest.json, and the licence is checked with api0, both through the
+# export crate's `http` agent (certificates checked by the OS), which fetches ffmpeg too.
 ureq = "3.4.2"
 # Decodes the embedded icons (window and menu bar); png is the only format needed.
 image = { version = "0.25", default-features = false, features = ["png"] }

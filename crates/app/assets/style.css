@@ -463,6 +463,11 @@ button.update-banner-link { background: transparent; font: inherit; cursor: poin
 .mcp-path, .mcp-note code { word-break: break-all; }
 .mcp-note { padding: 9px 11px; border-radius: 6px; background: var(--panel); }
 
+/* ffmpeg missing: the command to install it, under the error */
+.ffmpeg-help { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
+.ffmpeg-help p { margin: 0; }
+.ffmpeg-help code { word-break: break-all; }
+
 /* Export: the file's name */
 .export-name { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .export-name input {
