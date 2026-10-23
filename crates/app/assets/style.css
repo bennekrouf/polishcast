@@ -347,21 +347,63 @@ button kbd { margin-left: 6px; }
 
 /* Version and update banner, as in GitAgent and TrackCut */
 .app-version { font-size: 10px; font-weight: 400; color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
+/* Update, notice and consent banners: GitAgent's, so every app shows them alike. */
 .update-banner {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 56px 8px 16px; /* right: clear of the theme toggle */
-  background: var(--zoom);
-  color: #fff;
-  font-size: 13px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 999;
+    background: #4fa3ff;
+    color: #fff;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font: 13px var(--mono);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
 }
 .update-banner-text { flex: 1; }
 .update-banner-text strong { font-weight: 700; }
+.update-banner-link {
+    color: #fff;
+    text-decoration: underline;
+    font-weight: 600;
+    padding: 4px 10px;
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 4px;
+}
+.update-banner-link:hover { background: rgba(255,255,255,0.15); }
+.update-banner-dismiss {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 4px;
+    opacity: 0.7;
+}
+.update-banner-dismiss:hover { opacity: 1; }
+button.update-banner-link {
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+    height: auto;
+}
+.consent-banner {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 999;
+    background: #4fa3ff;
+    color: #fff;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font: 13px var(--mono);
+    box-shadow: 0 -2px 6px rgba(0,0,0,0.25);
+}
+body.light .update-banner, body.light .consent-banner { background: #1e5fb8; }
+.update-banner-text { flex: 1; }
 .update-banner-link {
   color: #fff;
   font-weight: 600;
@@ -370,10 +412,7 @@ button kbd { margin-left: 6px; }
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 4px;
 }
-button.update-banner-link { background: transparent; font: inherit; cursor: pointer; }
-.update-banner-link:hover { background: rgba(255, 255, 255, 0.15); }
 .update-banner-dismiss { background: transparent; border: none; color: #fff; font-size: 18px; line-height: 1; padding: 0 4px; opacity: 0.7; cursor: pointer; }
-.update-banner-dismiss:hover { opacity: 1; }
 
 /* Playback speed, in the transport */
 .speed { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
@@ -493,3 +532,6 @@ button.update-banner-link { background: transparent; font: inherit; cursor: poin
 /* Header controls: one height, borders included, whatever their padding or font. */
 .sidebar header button, .sidebar-buttons > button, .sidebar-buttons > a.button { height: 30px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; display: inline-flex; align-items: center; justify-content: center; }
 button.panel-toggle { width: 30px; padding-left: 0; padding-right: 0; }
+
+/* Full-width buttons keep the 30px height of the rest. */
+button.wide { height: 30px; padding-top: 0; padding-bottom: 0; }
