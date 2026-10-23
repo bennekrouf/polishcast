@@ -708,34 +708,39 @@ pub fn McpDialog() -> Element {
     rsx! {
         div { class: "modal-backdrop", onclick: move |_| open.set(false),
             div { class: "modal mcp-modal", onclick: move |e| e.stop_propagation(),
-                h2 { "Use PolishCast from Claude" }
-                p { class: "hint",
-                    "Ask Claude to polish your takes: add or tighten zooms, cut the pauses, trim the start and end, \
-                     change the background or the frame's shape, and export an MP4 or a GIF. An open take shows \
-                     its changes within a couple of seconds, and \u{2318}Z takes them back. Recording stays yours, \
-                     from the menu bar."
+                div { class: "modal-head",
+                    h2 { "Use PolishCast from Claude" }
+                    button { class: "modal-close", title: "Close", onclick: move |_| open.set(false), "×" }
                 }
-                h3 { "1 · Claude Desktop" }
-                p { class: "hint",
-                    "Settings \u{2192} Developer \u{2192} Edit Config, paste this in and save, then quit Claude and open it \
-                     again. If the file already has an mcpServers section, add just the polishcast entry to it."
-                }
-                Snippet { text: desktop.clone() }
-                p { class: "hint mcp-path", "The file: {desktop_config_path()}" }
-                h3 { "2 · Claude Code" }
-                p { class: "hint", "Run this once in a terminal:" }
-                Snippet { text: code.clone() }
-                h3 { "3 · Try it" }
-                p { class: "hint",
-                    "Ask: \u{201c}Cut the pauses in my last take, make it 16:9 and export a GIF.\u{201d}"
-                }
-                p { class: "hint mcp-note",
-                    "Claude in the browser (claude.ai) can\u{2019}t use this: it only connects to servers on the internet, \
-                     and PolishCast runs on your computer. Any other app that speaks MCP can, with the same command: "
-                    code { "{command} mcp" }
-                }
-                div { class: "modal-actions",
-                    button { onclick: move |_| open.set(false), "Close" }
+                div { class: "modal-body",
+                    p { class: "hint",
+                        "Ask Claude to polish your takes: add or tighten zooms, cut the pauses, trim the start and end, \
+                         change the background or the frame's shape, and export an MP4 or a GIF. An open take shows \
+                         its changes within a couple of seconds, and \u{2318}Z takes them back. Recording stays yours, \
+                         from the menu bar."
+                    }
+                    h3 { "1 · Claude Desktop" }
+                    p { class: "hint",
+                        "Settings \u{2192} Developer \u{2192} Edit Config, paste this in and save, then quit Claude and open it \
+                         again. If the file already has an mcpServers section, add just the polishcast entry to it."
+                    }
+                    Snippet { text: desktop.clone() }
+                    p { class: "hint mcp-path", "The file: {desktop_config_path()}" }
+                    h3 { "2 · Claude Code" }
+                    p { class: "hint", "Run this once in a terminal:" }
+                    Snippet { text: code.clone() }
+                    h3 { "3 · Try it" }
+                    p { class: "hint",
+                        "Ask: \u{201c}Cut the pauses in my last take, make it 16:9 and export a GIF.\u{201d}"
+                    }
+                    p { class: "hint mcp-note",
+                        "Claude in the browser (claude.ai) can\u{2019}t use this: it only connects to servers on the internet, \
+                         and PolishCast runs on your computer. Any other app that speaks MCP can, with the same command: "
+                        code { "{command} mcp" }
+                    }
+                    div { class: "modal-actions",
+                        button { onclick: move |_| open.set(false), "Close" }
+                    }
                 }
             }
         }

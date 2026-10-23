@@ -287,21 +287,25 @@ button kbd { margin-left: 6px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10;
+  z-index: 100;
 }
 .modal {
   width: min(460px, calc(100vw - 32px));
+  max-height: 84vh;
+  overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 18px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border-radius: 12px;
   outline: none;
 }
-.modal h2 { margin: 0; font-size: 15px; }
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 13px 16px; border-bottom: 1px solid var(--line);
+}
+.modal-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.modal-close { padding: 0; background: none; border: none; color: var(--muted); font-size: 19px; line-height: 1; cursor: pointer; }
+.modal-close:hover { color: var(--text); }
+.modal-body { padding: 16px; display: flex; flex-direction: column; gap: 13px; }
 .modal p { margin: 0; }
 .delete-name { font-weight: 600; word-break: break-all; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
@@ -427,7 +431,7 @@ button.update-banner-link { background: transparent; font: inherit; cursor: poin
     position: fixed;
     top: 10px;
     right: 14px;
-    z-index: 1000;
+    z-index: 90; /* under a modal's backdrop, so an open dialog dims it */
     width: 30px;
     height: 30px;
     display: flex;
@@ -451,7 +455,7 @@ button.update-banner-link { background: transparent; font: inherit; cursor: poin
 /* "Use PolishCast from Claude": what to paste, and where. */
 .sidebar-buttons { display: flex; gap: 6px; align-self: flex-start; }
 .mcp-button { color: var(--muted); }
-.mcp-modal { width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; }
+.mcp-modal { width: min(620px, calc(100vw - 32px)); }
 .mcp-modal h3 { margin: 6px 0 0; font-size: 13px; }
 .mcp-snippet-wrap { position: relative; }
 .mcp-snippet {
@@ -474,12 +478,18 @@ button.update-banner-link { background: transparent; font: inherit; cursor: poin
 .export-name input {
   flex: 1;
   min-width: 0;
-  font: inherit;
+  font: 12px var(--mono);
   color: var(--text);
   background: var(--bg, #18181b);
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 8px 10px;
+  outline: none;
   user-select: text;
   -webkit-user-select: text;
 }
+.export-name input:focus { border-color: var(--zoom); }
+
+/* Header controls: one height, borders included, whatever their padding or font. */
+.sidebar header button, .sidebar-buttons > button, .sidebar-buttons > a.button { height: 30px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; display: inline-flex; align-items: center; justify-content: center; }
+button.panel-toggle { width: 30px; padding-left: 0; padding-right: 0; }

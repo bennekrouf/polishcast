@@ -417,141 +417,146 @@ pub fn ProDialog() -> Element {
     rsx! {
         div { class: "modal-backdrop", onclick: move |_| close(),
             div { class: "modal", onclick: move |e| e.stop_propagation(),
-                h2 { "PolishCast Pro" }
-                match &current {
-                    Status::Pro(a) => rsx! {
-                        p { strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } ". Every take can be exported." }
-                        p { class: "hint", "{a.credits.left} AI credits left this month. {a.renewal()}." }
-                    },
-                    Status::NotPro(a) if a.is_free() => rsx! {
-                        p { "Free — " strong { "{a.credits.left} AI credits" } " left this month, for " strong { "{a.email}" } ". {a.renewal()}." }
-                        p { class: "hint",
-                            "The free version exports {FREE_EXPORTS} different takes. PolishCast Pro exports every take; it "
-                            "comes with a monthly plan on mayorana.ch."
-                        }
-                    },
-                    Status::NotPro(a) if !a.active => rsx! {
-                        p { "The subscription for " strong { "{a.email}" } " isn't active." }
-                        p { class: "error", "PolishCast runs as the free version. Renew it to have Pro again." }
-                    },
-                    Status::NotPro(a) => rsx! {
-                        p { "The " strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } " doesn't include PolishCast." }
-                        p { class: "error", "PolishCast runs as the free version. A plan with PolishCast makes it Pro." }
-                    },
-                    Status::Offline(a) => rsx! {
-                        p { strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } "." }
-                        p { class: "error",
-                            "PolishCast hasn't been able to check the licence for a week, so it runs as the free "
-                            "version until it can. Check the connection, then check again."
-                        }
-                    },
-                    Status::Unknown(_) => rsx! {
-                        p { class: "error", "The licence number on this computer isn't known. Check it against the email, or paste it again." }
-                    },
-                    Status::Free => rsx! {
-                        if refused.is_some() {
-                            p { class: "error", "You've used the free version's {FREE_EXPORTS} exports." }
-                        }
-                        p {
-                            "The free version exports {FREE_EXPORTS} different takes; exporting one of them again "
-                            "is free. Recording and editing are never limited. PolishCast Pro exports every take; "
-                            "it comes with a monthly plan on mayorana.ch."
-                        }
-                        p { class: "hint", "Free exports left: {left} of {FREE_EXPORTS}" }
-                    },
+                div { class: "modal-head",
+                    h2 { "PolishCast Pro" }
+                    button { class: "modal-close", title: "Close", onclick: move |_| close(), "×" }
                 }
-                if asks_number {
-                    input {
-                        class: "licence-key",
-                        spellcheck: "false",
-                        placeholder: "ABCDE-FGHJK-LMNPQ-RSTUV",
-                        value: "{key}",
-                        onmounted: move |e| async move {
-                            let _ = e.set_focus(true).await;
+                div { class: "modal-body",
+                    match &current {
+                        Status::Pro(a) => rsx! {
+                            p { strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } ". Every take can be exported." }
+                            p { class: "hint", "{a.credits.left} AI credits left this month. {a.renewal()}." }
                         },
-                        oninput: move |e| {
-                            problem.set(None);
-                            key.set(e.value());
-                        },
-                        onkeydown: move |e: KeyboardEvent| {
-                            e.stop_propagation();
-                            match e.key() {
-                                Key::Escape => close(),
-                                Key::Enter => {
-                                    e.prevent_default();
-                                    activate();
-                                }
-                                _ => {}
+                        Status::NotPro(a) if a.is_free() => rsx! {
+                            p { "Free — " strong { "{a.credits.left} AI credits" } " left this month, for " strong { "{a.email}" } ". {a.renewal()}." }
+                            p { class: "hint",
+                                "The free version exports {FREE_EXPORTS} different takes. PolishCast Pro exports every take; it "
+                                "comes with a monthly plan on mayorana.ch."
                             }
                         },
-                    }
-                    p { class: "hint",
-                        "Paste the licence number from your plan's email. It's checked with api0 now and once a "
-                        "day; Pro keeps working for a week without a connection."
-                    }
-                }
-                if offers_free {
-                    div { class: "free-credits",
-                        p { class: "hint", "No plan? Get free AI credits every month, without Pro. The licence number comes by email." }
-                        div { class: "free-row",
-                            input {
-                                class: "licence-key",
-                                r#type: "email",
-                                spellcheck: "false",
-                                placeholder: "you@example.com",
-                                value: "{free_email}",
-                                oninput: move |e| {
-                                    let mut free_email = free_email;
-                                    free_email.set(e.value());
-                                },
-                                onkeydown: move |e: KeyboardEvent| {
-                                    e.stop_propagation();
-                                    match e.key() {
-                                        Key::Escape => close(),
-                                        Key::Enter => {
-                                            e.prevent_default();
-                                            ask_free();
-                                        }
-                                        _ => {}
-                                    }
-                                },
+                        Status::NotPro(a) if !a.active => rsx! {
+                            p { "The subscription for " strong { "{a.email}" } " isn't active." }
+                            p { class: "error", "PolishCast runs as the free version. Renew it to have Pro again." }
+                        },
+                        Status::NotPro(a) => rsx! {
+                            p { "The " strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } " doesn't include PolishCast." }
+                            p { class: "error", "PolishCast runs as the free version. A plan with PolishCast makes it Pro." }
+                        },
+                        Status::Offline(a) => rsx! {
+                            p { strong { "{a.plan.name}" } " plan for " strong { "{a.email}" } "." }
+                            p { class: "error",
+                                "PolishCast hasn't been able to check the licence for a week, so it runs as the free "
+                                "version until it can. Check the connection, then check again."
                             }
-                            button { disabled: free_email.read().trim().is_empty() || busy(), onclick: move |_| ask_free(), "Get free AI credits" }
-                        }
-                        if let Some(n) = free_note() {
-                            p { class: "hint", "{n}" }
-                        }
+                        },
+                        Status::Unknown(_) => rsx! {
+                            p { class: "error", "The licence number on this computer isn't known. Check it against the email, or paste it again." }
+                        },
+                        Status::Free => rsx! {
+                            if refused.is_some() {
+                                p { class: "error", "You've used the free version's {FREE_EXPORTS} exports." }
+                            }
+                            p {
+                                "The free version exports {FREE_EXPORTS} different takes; exporting one of them again "
+                                "is free. Recording and editing are never limited. PolishCast Pro exports every take; "
+                                "it comes with a monthly plan on mayorana.ch."
+                            }
+                            p { class: "hint", "Free exports left: {left} of {FREE_EXPORTS}" }
+                        },
                     }
-                }
-                if let Some(p) = problem() {
-                    p { class: "error", "{p}" }
-                }
-                div { class: "modal-actions",
-                    if current.licence().is_some() {
-                        button {
-                            class: "left",
-                            title: "Removes the licence from every Mayorana app on this computer, e.g. to use it on another one",
-                            onclick: move |_| {
-                                deactivate();
-                                status.set(Status::Free);
-                            },
-                            "Remove from this computer"
-                        }
-                    }
-                    if let (Some(number), false) = (current.licence().map(str::to_owned), asks_number) {
-                        button { disabled: busy(), title: "Change or cancel the plan on mayorana.ch", onclick: move |_| manage(number.clone()),
-                            "Manage subscription…"
-                        }
-                        button { disabled: busy(), onclick: check_again, "Check again" }
-                    }
-                    if !matches!(current, Status::Pro(_)) {
-                        a { class: "button-link", href: "{BUY_URL}", target: "_blank",
-                            if current.licence().is_some() && current.free_credits().is_none() { "Renew…" } else { "Buy PolishCast Pro…" }
-                        }
-                    }
-                    button { onclick: move |_| close(), if asks_number { "Cancel" } else { "Close" } }
                     if asks_number {
-                        button { class: "primary", disabled: key.read().trim().is_empty() || busy(), onclick: move |_| activate(), "Activate" }
+                        input {
+                            class: "licence-key",
+                            spellcheck: "false",
+                            placeholder: "ABCDE-FGHJK-LMNPQ-RSTUV",
+                            value: "{key}",
+                            onmounted: move |e| async move {
+                                let _ = e.set_focus(true).await;
+                            },
+                            oninput: move |e| {
+                                problem.set(None);
+                                key.set(e.value());
+                            },
+                            onkeydown: move |e: KeyboardEvent| {
+                                e.stop_propagation();
+                                match e.key() {
+                                    Key::Escape => close(),
+                                    Key::Enter => {
+                                        e.prevent_default();
+                                        activate();
+                                    }
+                                    _ => {}
+                                }
+                            },
+                        }
+                        p { class: "hint",
+                            "Paste the licence number from your plan's email. It's checked with api0 now and once a "
+                            "day; Pro keeps working for a week without a connection."
+                        }
+                    }
+                    if offers_free {
+                        div { class: "free-credits",
+                            p { class: "hint", "No plan? Get free AI credits every month, without Pro. The licence number comes by email." }
+                            div { class: "free-row",
+                                input {
+                                    class: "licence-key",
+                                    r#type: "email",
+                                    spellcheck: "false",
+                                    placeholder: "you@example.com",
+                                    value: "{free_email}",
+                                    oninput: move |e| {
+                                        let mut free_email = free_email;
+                                        free_email.set(e.value());
+                                    },
+                                    onkeydown: move |e: KeyboardEvent| {
+                                        e.stop_propagation();
+                                        match e.key() {
+                                            Key::Escape => close(),
+                                            Key::Enter => {
+                                                e.prevent_default();
+                                                ask_free();
+                                            }
+                                            _ => {}
+                                        }
+                                    },
+                                }
+                                button { disabled: free_email.read().trim().is_empty() || busy(), onclick: move |_| ask_free(), "Get free AI credits" }
+                            }
+                            if let Some(n) = free_note() {
+                                p { class: "hint", "{n}" }
+                            }
+                        }
+                    }
+                    if let Some(p) = problem() {
+                        p { class: "error", "{p}" }
+                    }
+                    div { class: "modal-actions",
+                        if current.licence().is_some() {
+                            button {
+                                class: "left",
+                                title: "Removes the licence from every Mayorana app on this computer, e.g. to use it on another one",
+                                onclick: move |_| {
+                                    deactivate();
+                                    status.set(Status::Free);
+                                },
+                                "Remove from this computer"
+                            }
+                        }
+                        if let (Some(number), false) = (current.licence().map(str::to_owned), asks_number) {
+                            button { disabled: busy(), title: "Change or cancel the plan on mayorana.ch", onclick: move |_| manage(number.clone()),
+                                "Manage subscription…"
+                            }
+                            button { disabled: busy(), onclick: check_again, "Check again" }
+                        }
+                        if !matches!(current, Status::Pro(_)) {
+                            a { class: "button-link", href: "{BUY_URL}", target: "_blank",
+                                if current.licence().is_some() && current.free_credits().is_none() { "Renew…" } else { "Buy PolishCast Pro…" }
+                            }
+                        }
+                        button { onclick: move |_| close(), if asks_number { "Cancel" } else { "Close" } }
+                        if asks_number {
+                            button { class: "primary", disabled: key.read().trim().is_empty() || busy(), onclick: move |_| activate(), "Activate" }
+                        }
                     }
                 }
             }
