@@ -16,6 +16,23 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Fixed
+
+- On company networks that inspect secure connections (Zscaler and similar
+  proxies), activating PolishCast Pro failed with "invalid peer certificate:
+  UnknownIssuer". PolishCast now trusts the certificates your computer trusts,
+  as your browser does, so the licence check, update check and ffmpeg download
+  work there too. If the proxy's certificate isn't installed on the computer,
+  the message now says so and suggests asking IT to install it.
+- When ffmpeg can't be downloaded (offline, or blocked by a company network),
+  exporting and the sound tools no longer stop at an error. PolishCast shows
+  the one command that installs ffmpeg on your computer, ready to copy
+  (winget on Windows, Homebrew on a Mac, apt on Linux), and a link to download
+  it by hand, then Try again finds it. On Windows it now also finds an ffmpeg
+  installed with winget, Scoop or Chocolatey without restarting PolishCast.
+
 ## [0.1.22] - 2026-10-22
 
 ### Changed

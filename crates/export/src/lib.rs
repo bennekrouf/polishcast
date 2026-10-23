@@ -6,6 +6,7 @@
 //! macOS) with the recording's sound copied over. ffmpeg is downloaded on first use (`tools`).
 
 pub mod compact;
+pub mod http;
 pub mod sound;
 pub mod tools;
 
@@ -89,25 +90,63 @@ impl std::fmt::Display for Cancelled {
 
 impl std::error::Error for Cancelled {}
 
-/// An installed ffmpeg: ours, then the PATH, Homebrew's and TrackCut's. Apps opened from the
-/// Finder don't get the shell's PATH, hence the fixed places.
+/// An installed ffmpeg: ours, then the PATH, then where Homebrew, winget, Scoop, Chocolatey and
+/// TrackCut put it. Apps opened from the Finder don't get the shell's PATH, and an app already
+/// open doesn't see an install made since, hence the fixed places.
 pub fn ffmpeg() -> Option<PathBuf> {
     let name = format!("ffmpeg{}", std::env::consts::EXE_SUFFIX);
     let path = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).unwrap_or_default();
-    let fixed = [
+    let local = dirs::data_local_dir().unwrap_or_default();
+    let home = dirs::home_dir().unwrap_or_default();
+    let mut fixed = vec![
         PathBuf::from("/opt/homebrew/bin"),
         PathBuf::from("/usr/local/bin"),
-        dirs::data_local_dir().unwrap_or_default().join("Splitter").join("tools"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/snap/bin"),
+        local.join("Splitter").join("tools"),
     ];
+    if cfg!(windows) {
+        fixed.push(local.join("Microsoft").join("WinGet").join("Links"));
+        fixed.extend(winget_bins(&local.join("Microsoft").join("WinGet").join("Packages")));
+        fixed.push(home.join("scoop").join("shims"));
+        fixed.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin"));
+    }
     std::iter::once(tools::dir()).chain(path).chain(fixed).map(|dir| dir.join(&name)).find(|p| p.is_file())
 }
+
+/// The `bin` folders of the ffmpeg packages winget unpacked into `packages`
+/// (`Gyan.FFmpeg_…\ffmpeg-7.1-full_build\bin`), for when it made no link in `Links`.
+fn winget_bins(packages: &Path) -> Vec<PathBuf> {
+    let dirs = |dir: &Path| -> Vec<PathBuf> {
+        std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect()
+    };
+    dirs(packages)
+        .into_iter()
+        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase().contains("ffmpeg")))
+        .flat_map(|package| dirs(&package))
+        .map(|build| build.join("bin"))
+        .collect()
+}
+
+/// ffmpeg isn't installed and couldn't be downloaded (offline, or blocked by a company
+/// network): the editor then says how to install it by hand.
+#[derive(Debug)]
+pub struct FfmpegMissing(pub String);
+
+impl std::fmt::Display for FfmpegMissing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Getting ffmpeg: {}", self.0)
+    }
+}
+
+impl std::error::Error for FfmpegMissing {}
 
 /// ffmpeg, downloaded into the app's tools folder if none is installed. `progress` gets the
 /// fraction downloaded; `cancelled` is polled between chunks.
 pub fn ensure_ffmpeg(progress: &mut dyn FnMut(f32), cancelled: &dyn Fn() -> bool) -> Result<PathBuf> {
     match ffmpeg() {
         Some(path) => Ok(path),
-        None => tools::ensure_ffmpeg(&tools::dir(), progress, cancelled).map_err(|e| anyhow!("Getting ffmpeg: {e}")),
+        None => tools::ensure_ffmpeg(&tools::dir(), progress, cancelled).map_err(|e| FfmpegMissing(e).into()),
     }
 }
 
@@ -352,4 +391,28 @@ fn collect(stderr: Option<ChildStderr>) -> JoinHandle<String> {
         }
         text
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_download_that_failed_is_told_apart_from_other_errors() {
+        let e: anyhow::Error = FfmpegMissing("Could not reach github.com".into()).into();
+        assert!(e.is::<FfmpegMissing>());
+        assert_eq!(e.to_string(), "Getting ffmpeg: Could not reach github.com");
+        assert!(!anyhow::anyhow!("Reading the project").is::<FfmpegMissing>());
+    }
+
+    #[test]
+    fn winget_packages_are_searched_for_their_bin_folder() {
+        let root = std::env::temp_dir().join(format!("polishcast-winget-{}", std::process::id()));
+        let bin =
+            root.join("Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe").join("ffmpeg-7.1-full_build").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(root.join("Git.Git_x").join("cmd")).unwrap();
+        assert_eq!(winget_bins(&root), vec![bin]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
