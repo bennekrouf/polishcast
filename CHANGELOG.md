@@ -16,6 +16,15 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Fixed
+
+- Installing silently, as IT does for an unattended update with `/VERYSILENT`,
+  no longer hangs when PolishCast is already installed: setup waited on a
+  question nobody could see. It now replaces the installed version without
+  asking.
+
 ## [0.1.26] - 2026-10-25
 
 ### Changed
