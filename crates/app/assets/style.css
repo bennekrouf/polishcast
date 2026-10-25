@@ -33,12 +33,15 @@ body.light {
 
 * { box-sizing: border-box; }
 
+/* Form controls do not inherit type by default; keep them in the shared stack. */
+input, button, textarea, select { font-family: inherit; }
+
 html, body { height: 100%; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 13px/1.5 var(--mono);
   user-select: none;
   overflow: hidden;
 }
@@ -271,7 +274,7 @@ button.wide { width: 100%; padding: 8px; }
 button.danger { border-color: var(--accent); color: var(--error); }
 
 kbd {
-  font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 11px var(--mono);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -330,7 +333,7 @@ button kbd { margin-left: 6px; }
 .free-row { display: flex; gap: 6px; align-items: center; }
 .free-row .licence-key { flex: 1; min-width: 0; }
 .modal .licence-key {
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 12px/1.5 var(--mono);
   color: var(--text);
   background: var(--bg, #18181b);
   border: 1px solid var(--line);
@@ -500,7 +503,7 @@ body.light .update-banner, body.light .consent-banner { background: #1e5fb8; }
 .mcp-snippet {
   margin: 0; padding: 10px 76px 10px 12px; border-radius: 6px;
   border: 1px solid var(--line); background: var(--bg); color: var(--text);
-  font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.5;
+  font: 11.5px var(--mono); line-height: 1.5;
   white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text;
 }
 .mcp-copy { position: absolute; top: 6px; right: 6px; padding: 2px 10px; font-size: 12px; }
@@ -535,3 +538,38 @@ button.panel-toggle { width: 30px; padding-left: 0; padding-right: 0; }
 
 /* Full-width buttons keep the 30px height of the rest. */
 button.wide { height: 30px; padding-top: 0; padding-bottom: 0; }
+
+/* ── Pro, once active ─────────────────────────────────────────────
+   One line that says so, the plan's numbers small below it, and nothing
+   to undo it with: removing or re-checking the licence just pasted is the
+   last thing to put in front of someone at that moment. */
+.pro-done { text-align: center; }
+.modal.pro-done {
+    position: relative;
+    width: 340px; max-width: calc(100vw - 32px);
+    padding: 30px 28px 22px;
+}
+.pro-done .modal-close { position: absolute; top: 10px; right: 12px; }
+.pro-done .pro-done-mark {
+    width: 44px; height: 44px; margin: 0 auto 14px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: #1f9d61; color: #fff; font-size: 22px; font-weight: 700;
+}
+.pro-done .pro-done-title { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--text); }
+.pro-done .pro-done-sub { margin: 0; font-size: 12px; color: var(--muted); }
+.pro-done .pro-done-meta { margin: 16px 0 0; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.pro-done .pro-done-manage {
+    display: inline-block; margin-top: 12px; padding: 0; border: 0; background: none;
+    font-size: 10.5px; color: var(--muted); text-decoration: underline; cursor: pointer;
+}
+.pro-done .pro-done-manage:hover:not(:disabled) { color: var(--text); }
+.pro-done .pro-done-manage:disabled { opacity: 0.6; cursor: default; }
+.pro-done .pro-done-error { margin: 8px 0 0; font-size: 11px; color: var(--error); }
+
+/* The licence being checked: a small ring in place of the button's label. */
+.pro-spinner {
+    display: inline-block; width: 11px; height: 11px; vertical-align: -1px;
+    border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+    animation: pro-spin 0.7s linear infinite;
+}
+@keyframes pro-spin { to { transform: rotate(360deg); } }

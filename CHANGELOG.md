@@ -20,6 +20,13 @@ user sees in the update prompt should all be accounted for.
 
 ### Changed
 
+- Activating a licence now shows a small spinner while it is checked, then
+  a window that says you're Pro, with the AI credits left and the renewal
+  date in small type below. Removing the licence and checking it again no
+  longer sit beside it; Manage subscription is a small link. Press Esc or
+  the × to close it.
+- Text in buttons, fields and the rest of the window is now set in the same
+  monospaced typeface as GitAgent and the other Mayorana apps.
 - The new-version banner and the usage-statistics notice now look the same
   as in GitAgent: a blue bar across the top, or the bottom for the notice,
   with a Download link and a × to hide it.
