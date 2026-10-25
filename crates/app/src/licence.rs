@@ -344,15 +344,34 @@ pub fn ProDialog() -> Element {
     let free_email = use_signal(String::new);
     let free_note = use_signal(|| Option::<String>::None);
     let free_hidden = use_signal(|| false);
+    // Set by an Activate that made PolishCast Pro, so the window congratulates rather than
+    // just reporting it.
+    let activated = use_signal(|| false);
+    // Escape closes the window wherever the focus is: the Pro view has no field to listen on.
+    use_future(move || async move {
+        let (mut open, mut activated) = (open, activated);
+        let mut keys = document::eval(
+            "if (window._proEscape) window.removeEventListener('keydown', window._proEscape);\
+             window._proEscape = (e) => { if (e.key === 'Escape') dioxus.send(true); };\
+             window.addEventListener('keydown', window._proEscape);",
+        );
+        while keys.recv::<bool>().await.is_ok() {
+            if open.peek().is_some() {
+                open.set(None);
+                activated.set(false);
+            }
+        }
+    });
     let Some(refused) = open() else { return rsx! {} };
     let current = status();
     let asks_number = matches!(current, Status::Free | Status::Unknown(_)) || current.free_credits().is_some();
     let offers_free = matches!(current, Status::Free | Status::Unknown(_)) && !free_hidden();
     let left = pro.exported.read().left();
     let close = move || {
-        let (mut open, mut problem) = (open, problem);
+        let (mut open, mut problem, mut activated) = (open, problem, activated);
         open.set(None);
         problem.set(None);
+        activated.set(false);
     };
     let activate = move || {
         let pasted = key.peek().clone();
@@ -362,9 +381,10 @@ pub fn ProDialog() -> Element {
         let mut busy = busy;
         busy.set(true);
         spawn(async move {
-            let (mut status, mut key, mut problem) = (status, key, problem);
+            let (mut status, mut key, mut problem, mut activated) = (status, key, problem, activated);
             match activate_async(pasted).await {
                 Ok(s) => {
+                    activated.set(matches!(s, Status::Pro(_)));
                     status.set(s);
                     key.set(String::new());
                     problem.set(None);
@@ -413,6 +433,37 @@ pub fn ProDialog() -> Element {
             busy.set(false);
         });
     };
+
+    if let Status::Pro(a) = &current {
+        let number = a.licence.clone();
+        return rsx! {
+            div { class: "modal-backdrop", onclick: move |_| close(),
+                div { class: "modal pro-done", onclick: move |e| e.stop_propagation(),
+                    button { class: "modal-close", title: "Close", onclick: move |_| close(), "×" }
+                    div { class: "pro-done-mark", "✓" }
+                    h2 { class: "pro-done-title",
+                        if activated() { "Congratulations, you're Pro!" } else { "You're Pro" }
+                    }
+                    p { class: "pro-done-sub", "Licence validated." }
+                    p { class: "pro-done-meta",
+                        "{a.credits.left} AI credits left this month"
+                        br {}
+                        "{a.renewal()}"
+                    }
+                    button {
+                        class: "pro-done-manage",
+                        disabled: busy(),
+                        title: "Change or cancel the plan on mayorana.ch",
+                        onclick: move |_| manage(number.clone()),
+                        "Manage subscription"
+                    }
+                    if let Some(p) = problem() {
+                        p { class: "pro-done-error", "{p}" }
+                    }
+                }
+            }
+        };
+    }
 
     rsx! {
         div { class: "modal-backdrop", onclick: move |_| close(),
@@ -555,7 +606,9 @@ pub fn ProDialog() -> Element {
                         }
                         button { onclick: move |_| close(), if asks_number { "Cancel" } else { "Close" } }
                         if asks_number {
-                            button { class: "primary", disabled: key.read().trim().is_empty() || busy(), onclick: move |_| activate(), "Activate" }
+                            button { class: "primary", disabled: key.read().trim().is_empty() || busy(), onclick: move |_| activate(),
+                                if busy() { span { class: "pro-spinner", title: "Checking the licence" } } else { "Activate" }
+                            }
                         }
                     }
                 }
