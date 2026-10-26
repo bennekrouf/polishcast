@@ -16,6 +16,15 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Fixed
+
+- On Windows and Linux, opening PolishCast while it already runs in the
+  notification area brings its window back, instead of starting another,
+  hidden copy each time. Only one PolishCast runs at a time, so its recording
+  shortcut and notification-area icon always belong to the one you see.
+
 ## [0.1.27] - 2026-10-25
 
 ### Fixed
