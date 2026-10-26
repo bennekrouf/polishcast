@@ -5,6 +5,7 @@ mod area_picker;
 mod editor;
 mod feedback;
 mod ffmpeg_help;
+mod instance;
 mod licence;
 mod limits;
 mod mcp;
@@ -24,6 +25,12 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some("mcp") {
         return mcp::serve();
     }
+    // A launch while PolishCast already runs (its window closed, in the notification area)
+    // shows that one instead of starting a second, hidden copy.
+    let _instance = match instance::claim(&webview_data_dir()) {
+        instance::Claim::First(lock) => lock,
+        instance::Claim::AlreadyRunning => return,
+    };
     let cfg = Config::new()
         .with_data_directory(webview_data_dir())
         .with_window(

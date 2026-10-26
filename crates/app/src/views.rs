@@ -232,6 +232,18 @@ pub fn App() -> Element {
             window().set_focus();
         }
     });
+    // Launched again while running (Start menu, a shortcut): the other launch handed over and
+    // quit, and this window comes up instead.
+    use_future(|| async {
+        loop {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            if crate::instance::take_show_request() {
+                window().set_visible(true);
+                window().set_minimized(false);
+                window().set_focus();
+            }
+        }
+    });
     // Clicking the app's icon (Dock, Finder, Launchpad) while it runs with the window closed:
     // macOS asks the app to reopen, and Dioxus leaves that unanswered.
     use_wry_event_handler(|event, _| {
