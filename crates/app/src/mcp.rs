@@ -665,7 +665,7 @@ fn export(args: &Value) -> Result<Value, String> {
 
 // ── The window ───────────────────────────────────────────────────────────────────────────
 
-/// Whether the "Use PolishCast from Claude" window is open. Provided once, by `App`.
+/// Whether the "Use PolishCast from Claude or Codex" window is open. Provided once, by `App`.
 #[derive(Clone, Copy)]
 pub struct McpOpen(pub Signal<bool>);
 
@@ -684,6 +684,12 @@ pub fn desktop_config(command: &str) -> String {
 /// The one line that adds it to Claude Code, for every project.
 pub fn code_command(command: &str) -> String {
     format!("claude mcp add polishcast --scope user -- \"{command}\" mcp")
+}
+
+/// The one line that adds it to Codex. Its CLI, IDE extension and app share
+/// one list of servers, each one there for every project.
+pub fn codex_command(command: &str) -> String {
+    format!("codex mcp add polishcast -- \"{command}\" mcp")
 }
 
 fn desktop_config_path() -> &'static str {
@@ -705,11 +711,12 @@ pub fn McpDialog() -> Element {
     let command = command();
     let desktop = desktop_config(&command);
     let code = code_command(&command);
+    let codex = codex_command(&command);
     rsx! {
         div { class: "modal-backdrop", onclick: move |_| open.set(false),
             div { class: "modal mcp-modal", onclick: move |e| e.stop_propagation(),
                 div { class: "modal-head",
-                    h2 { "Use PolishCast from Claude" }
+                    h2 { "Use PolishCast from Claude or Codex" }
                     button { class: "modal-close", title: "Close", onclick: move |_| open.set(false), "×" }
                 }
                 div { class: "modal-body",
@@ -729,7 +736,10 @@ pub fn McpDialog() -> Element {
                     h3 { "2 · Claude Code" }
                     p { class: "hint", "Run this once in a terminal:" }
                     Snippet { text: code.clone() }
-                    h3 { "3 · Try it" }
+                    h3 { "3 · Codex" }
+                    p { class: "hint", "Run this once in a terminal:" }
+                    Snippet { text: codex.clone() }
+                    h3 { "4 · Try it" }
                     p { class: "hint",
                         "Ask: \u{201c}Cut the pauses in my last take, make it 16:9 and export a GIF.\u{201d}"
                     }
@@ -811,5 +821,10 @@ mod tests {
     fn a_take_must_exist_with_its_project() {
         assert!(Take::from(&json!({})).is_err());
         assert!(Take::from(&json!({ "take": "/nowhere/2026-01-01 10.00.00" })).is_err());
+    }
+
+    #[test]
+    fn the_codex_command_quotes_a_path_with_spaces() {
+        assert_eq!(codex_command("/A B/polishcast"), "codex mcp add polishcast -- \"/A B/polishcast\" mcp");
     }
 }
