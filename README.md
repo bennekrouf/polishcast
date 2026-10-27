@@ -1,5 +1,7 @@
 # PolishCast
 
+![PolishCast editing a recording: the clip on a gradient background, zooms on the timeline and the style panel](docs/screenshot.png)
+
 Record your screen, a window or an area from the menu bar, get a polished video: smooth
 cursor with a ring on clicks, automatic zoom on clicks, background (colour, gradient or your
 own picture), padding and rounded corners. Export as MP4 or GIF. Rust + Dioxus desktop, macOS 15+ and
