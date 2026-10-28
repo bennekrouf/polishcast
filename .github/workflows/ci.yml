@@ -60,7 +60,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
+          # The image the release builds on: ScreenCaptureKit's Metal bindings
+          # need its newer SDK, which macos-15 doesn't have.
+          - os: macos-latest
             release-check: true
           - os: windows-latest
     runs-on: ${{ matrix.os }}
