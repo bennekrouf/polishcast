@@ -44,6 +44,9 @@ pub fn cursor_svg_path() -> String {
     d + "Z"
 }
 
+/// Why a frame could not be made: a size of zero, or one too big to draw on.
+const NO_FRAME: &str = "The video size is not one a frame can be drawn at";
+
 pub struct Compositor {
     backdrop: Pixmap,
     /// Where the recording may draw: the content rectangle with rounded corners.
@@ -53,19 +56,19 @@ pub struct Compositor {
 
 impl Compositor {
     /// For frames of `width` × `height`. Layout that doesn't change over time is taken from the
-    /// scene's first frame.
-    pub fn new(scene: &Scene, width: u32, height: u32) -> Self {
+    /// scene's first frame. Refused for a size there is nothing to draw on (zero, or too big).
+    pub fn new(scene: &Scene, width: u32, height: u32) -> Result<Self, &'static str> {
         Self::with_image(scene, width, height, None)
     }
 
     /// Like `new`, with the picture a `Background::Image` names (from `load_image`). Without
     /// one, such a background is drawn dark.
-    pub fn with_image(scene: &Scene, width: u32, height: u32, image: Option<PixmapRef>) -> Self {
+    pub fn with_image(scene: &Scene, width: u32, height: u32, image: Option<PixmapRef>) -> Result<Self, &'static str> {
         let first = scene.frame(0.0, width, height);
         let c = first.content;
-        let content_path = rounded_rect(c.x, c.y, c.w, c.h, first.radius);
+        let content_path = rounded_rect(c.x, c.y, c.w, c.h, first.radius).ok_or("The recording has no size")?;
 
-        let mut backdrop = Pixmap::new(width, height).expect("frame size");
+        let mut backdrop = Pixmap::new(width, height).ok_or(NO_FRAME)?;
         let mut paint = Paint { anti_alias: true, ..Default::default() };
         paint.shader = match &scene.project.style.background {
             Background::Color(c) => tiny_skia::Shader::SolidColor(parse_color(c)),
@@ -76,11 +79,11 @@ impl Compositor {
                 SpreadMode::Pad,
                 Transform::identity(),
             )
-            .expect("two stops"),
+            .ok_or(NO_FRAME)?,
             Background::Image(_) => tiny_skia::Shader::SolidColor(parse_color("#18181b")),
         };
         backdrop.fill_rect(
-            tiny_skia::Rect::from_xywh(0.0, 0.0, width as f32, height as f32).expect("frame size"),
+            tiny_skia::Rect::from_xywh(0.0, 0.0, width as f32, height as f32).ok_or(NO_FRAME)?,
             &paint,
             Transform::identity(),
             None,
@@ -94,11 +97,11 @@ impl Compositor {
             backdrop.draw_pixmap(0, 0, img, &paint, at, None);
         }
 
-        let mut clip = Mask::new(width, height).expect("frame size");
+        let mut clip = Mask::new(width, height).ok_or(NO_FRAME)?;
         clip.fill_path(&content_path, FillRule::Winding, true, Transform::identity());
 
         if let Some(s) = first.shadow {
-            let mut shade = Mask::new(width, height).expect("frame size");
+            let mut shade = Mask::new(width, height).ok_or(NO_FRAME)?;
             shade.fill_path(&content_path, FillRule::Winding, true, Transform::from_translate(0.0, s.dy));
             let alpha = blur(shade.data(), width as usize, height as usize, s.sigma.round().max(1.0) as usize);
             darken(backdrop.data_mut(), &alpha, s.alpha);
@@ -113,7 +116,7 @@ impl Compositor {
             }
         }
         pb.close();
-        Self { backdrop, clip, cursor: pb.finish().expect("cursor path") }
+        Ok(Self { backdrop, clip, cursor: pb.finish().ok_or("The cursor could not be drawn")? })
     }
 
     /// Width and height of the frames it draws.
@@ -166,10 +169,10 @@ impl Compositor {
 }
 
 /// A rectangle with circular corners of radius `r`.
-fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Path {
+fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     let r = r.min(w / 2.0).min(h / 2.0).max(0.0);
     if r == 0.0 {
-        return PathBuilder::from_rect(tiny_skia::Rect::from_xywh(x, y, w, h).expect("content size"));
+        return tiny_skia::Rect::from_xywh(x, y, w, h).map(PathBuilder::from_rect);
     }
     // Control-point distance that makes a cubic Bézier a close quarter circle.
     let k = r * 0.552_284_8;
@@ -184,7 +187,7 @@ fn rounded_rect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Path {
     pb.line_to(x, y + r);
     pb.cubic_to(x, y + r - k, x + r - k, y, x + r, y);
     pb.close();
-    pb.finish().expect("content path")
+    pb.finish()
 }
 
 /// `#rgb` or `#rrggbb`; anything else is black.
@@ -263,7 +266,7 @@ mod tests {
     #[test]
     fn draws_the_recording_inside_the_background() {
         let s = scene(false);
-        let comp = Compositor::new(&s, 200, 120);
+        let comp = Compositor::new(&s, 200, 120).unwrap();
         let mut source = Pixmap::new(100, 50).unwrap();
         source.fill(Color::from_rgba8(0, 0, 255, 255));
         let mut out = Pixmap::new(200, 120).unwrap();
@@ -279,7 +282,7 @@ mod tests {
     #[test]
     fn the_cursor_is_drawn_at_its_tip() {
         let s = scene(false);
-        let comp = Compositor::new(&s, 200, 120);
+        let comp = Compositor::new(&s, 200, 120).unwrap();
         let mut source = Pixmap::new(100, 50).unwrap();
         source.fill(Color::from_rgba8(0, 0, 255, 255));
         let mut out = Pixmap::new(200, 120).unwrap();
@@ -302,7 +305,7 @@ mod tests {
             clicks: vec![polishcast_core::Click { t: 0.0, x: 0.5, y: 0.5, button: polishcast_core::Button::Left }],
         };
         let s = Scene::new(p, &events);
-        let comp = Compositor::new(&s, 200, 100);
+        let comp = Compositor::new(&s, 200, 100).unwrap();
         let source = Pixmap::new(100, 50).unwrap();
         let mut out = Pixmap::new(200, 100).unwrap();
         let mut frame = s.frame(0.1, 200, 100);
@@ -319,8 +322,8 @@ mod tests {
         let mut a = Pixmap::new(200, 120).unwrap();
         let mut b = Pixmap::new(200, 120).unwrap();
         let source = Pixmap::new(100, 50).unwrap();
-        Compositor::new(&plain, 200, 120).draw(&plain.frame(0.0, 200, 120), source.as_ref(), &mut a);
-        Compositor::new(&shaded, 200, 120).draw(&shaded.frame(0.0, 200, 120), source.as_ref(), &mut b);
+        Compositor::new(&plain, 200, 120).unwrap().draw(&plain.frame(0.0, 200, 120), source.as_ref(), &mut a);
+        Compositor::new(&shaded, 200, 120).unwrap().draw(&shaded.frame(0.0, 200, 120), source.as_ref(), &mut b);
         assert!(pixel(&b, 100, 106)[0] < pixel(&a, 100, 106)[0]);
         assert_eq!(pixel(&b, 2, 2), pixel(&a, 2, 2), "the far corner stays clear");
     }
@@ -341,7 +344,7 @@ mod tests {
             Transform::identity(),
             None,
         );
-        let comp = Compositor::with_image(&s, 200, 100, Some(img.as_ref()));
+        let comp = Compositor::with_image(&s, 200, 100, Some(img.as_ref())).unwrap();
         let mut out = Pixmap::new(200, 100).unwrap();
         comp.draw(&s.frame(0.0, 200, 100), Pixmap::new(100, 50).unwrap().as_ref(), &mut out);
         assert_eq!(pixel(&out, 3, 3)[1], 255, "green on the left");

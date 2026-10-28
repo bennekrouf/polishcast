@@ -156,6 +156,8 @@ impl Recorder {
     pub fn spawn() -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
         let (etx, events) = crossbeam_channel::unbounded();
+        // The operating system refusing a thread leaves nothing to fall back to.
+        #[allow(clippy::expect_used)]
         std::thread::Builder::new()
             .name("polishcast-capture".into())
             .spawn(move || run(rx, etx))

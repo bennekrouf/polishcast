@@ -19,7 +19,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, PoisonError};
 
 struct Server {
     port: u16,
@@ -52,7 +52,7 @@ fn server() -> Option<&'static Server> {
 pub fn publish(path: &Path) -> Option<String> {
     let server = server()?;
     let token = random_token();
-    let mut files = server.files.lock().unwrap();
+    let mut files = server.files.lock().unwrap_or_else(PoisonError::into_inner);
     files.clear();
     files.insert(token.clone(), path.to_owned());
     let name = path.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
@@ -64,7 +64,7 @@ pub fn publish(path: &Path) -> Option<String> {
 pub fn share(path: &Path) -> Option<String> {
     let server = server()?;
     let token = random_token();
-    server.files.lock().unwrap().insert(token.clone(), path.to_owned());
+    server.files.lock().unwrap_or_else(PoisonError::into_inner).insert(token.clone(), path.to_owned());
     let name = path.extension().and_then(|e| e.to_str()).unwrap_or("bin");
     Some(format!("http://127.0.0.1:{}/{token}.{name}", server.port))
 }
@@ -72,7 +72,7 @@ pub fn share(path: &Path) -> Option<String> {
 /// Stop serving what `publish` returned `url` for (e.g. when another file is selected).
 pub fn unpublish(url: &str) {
     if let Some(server) = server() {
-        server.files.lock().unwrap().remove(token_of(url));
+        server.files.lock().unwrap_or_else(PoisonError::into_inner).remove(token_of(url));
     }
 }
 
@@ -85,21 +85,36 @@ pub fn in_app_path(url: &str) -> String {
     format!("/media/{}", url.rsplit('/').next().unwrap_or(""))
 }
 
+/// A response the builder could not make (only an invalid header could do that) is an
+/// empty 500, not a crash.
+fn or_500(
+    built: Result<Response<Cow<'static, [u8]>>, dioxus::desktop::wry::http::Error>,
+) -> Response<Cow<'static, [u8]>> {
+    built.unwrap_or_else(|_| {
+        let mut r = Response::new(Cow::Borrowed(&[][..]));
+        *r.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+        r
+    })
+}
+
 /// Answer a request for an `in_app_path` (register it for "media" with `use_asset_handler`).
 /// Reads the file, so call it off the UI thread.
 pub fn in_app_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
-    let empty = |status| Response::builder().status(status).body(Cow::Borrowed(&[][..])).unwrap();
-    let path = server().and_then(|s| s.files.lock().unwrap().get(token_of(request.uri().path())).cloned());
+    let empty = |status| or_500(Response::builder().status(status).body(Cow::Borrowed(&[][..])));
+    let path = server().and_then(|s| {
+        s.files.lock().unwrap_or_else(PoisonError::into_inner).get(token_of(request.uri().path())).cloned()
+    });
     let Some(path) = path else { return empty(StatusCode::NOT_FOUND) };
     let Ok(mut file) = File::open(&path) else { return empty(StatusCode::NOT_FOUND) };
     let Ok(len) = file.metadata().map(|m| m.len()) else { return empty(StatusCode::INTERNAL_SERVER_ERROR) };
     let range = request.headers().get(header::RANGE).and_then(|v| v.to_str().ok());
     let Some((start, end)) = byte_range(range, len) else {
-        return Response::builder()
-            .status(StatusCode::RANGE_NOT_SATISFIABLE)
-            .header(header::CONTENT_RANGE, format!("bytes */{len}"))
-            .body(Cow::Borrowed(&[][..]))
-            .unwrap();
+        return or_500(
+            Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header(header::CONTENT_RANGE, format!("bytes */{len}"))
+                .body(Cow::Borrowed(&[][..])),
+        );
     };
     // Always partial content (even without a Range header), so the web view knows it can seek.
     let end = end.min(start + IN_APP_CHUNK - 1);
@@ -107,14 +122,15 @@ pub fn in_app_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]
     if file.seek(SeekFrom::Start(start)).and_then(|_| file.read_exact(&mut body)).is_err() {
         return empty(StatusCode::INTERNAL_SERVER_ERROR);
     }
-    Response::builder()
-        .status(StatusCode::PARTIAL_CONTENT)
-        .header(header::CONTENT_TYPE, content_type(&path))
-        .header(header::ACCEPT_RANGES, "bytes")
-        .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{len}"))
-        .header(header::CONTENT_LENGTH, body.len().to_string())
-        .body(Cow::Owned(body))
-        .unwrap()
+    or_500(
+        Response::builder()
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header(header::CONTENT_TYPE, content_type(&path))
+            .header(header::ACCEPT_RANGES, "bytes")
+            .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{len}"))
+            .header(header::CONTENT_LENGTH, body.len().to_string())
+            .body(Cow::Owned(body)),
+    )
 }
 
 /// The token in a URL path (`/<token>.<ext>`).
@@ -178,7 +194,8 @@ fn handle(stream: TcpStream) -> std::io::Result<()> {
         }
         let mut parts = request_line.split_whitespace();
         let (method, target) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
-        let path = server().and_then(|s| s.files.lock().unwrap().get(token_of(target)).cloned());
+        let path = server()
+            .and_then(|s| s.files.lock().unwrap_or_else(PoisonError::into_inner).get(token_of(target)).cloned());
         match (method, path) {
             ("GET" | "HEAD", Some(path)) => serve(&mut out, &path, range.as_deref(), method == "HEAD")?,
             _ => status(&mut out, "404 Not Found")?,

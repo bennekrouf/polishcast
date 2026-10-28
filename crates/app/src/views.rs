@@ -40,7 +40,8 @@ const TRAY_PLACE: &str = if cfg!(target_os = "macos") { "menu bar" } else { "not
 
 /// The menu bar item: its title shows the state, its menu starts and stops.
 struct Tray {
-    icon: TrayIcon,
+    /// `None` when the system would not show one; the window still has every control.
+    icon: Option<TrayIcon>,
     record: MenuItem,
     show: MenuItem,
 }
@@ -59,7 +60,7 @@ impl Tray {
         if let Some(icon) = crate::decode_png(TRAY_PNG, 44).and_then(|(rgba, w, h)| Icon::from_rgba(rgba, w, h).ok()) {
             builder = builder.with_icon(icon);
         }
-        let icon = builder.build().expect("menu bar item");
+        let icon = builder.build().ok();
         let tray = Self { icon, record, show };
         tray.update(Status::Idle);
         tray
@@ -72,7 +73,9 @@ impl Tray {
             Status::Recording(since) => (Some(format!("● {}", clock(since.elapsed()))), "Stop Recording", true),
             Status::Saving => (Some("saving".to_string()), "Saving…", false),
         };
-        self.icon.set_title(title);
+        if let Some(icon) = &self.icon {
+            icon.set_title(title);
+        }
         self.record.set_text(item);
         self.record.set_enabled(enabled);
     }

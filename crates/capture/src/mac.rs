@@ -12,7 +12,7 @@ use screencapturekit::recording_output::{
     SCRecordingOutputFileType,
 };
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 #[derive(Default)]
@@ -27,14 +27,14 @@ struct Shared {
 
 impl Shared {
     fn set_done(&self) {
-        *self.done.lock().unwrap() = true;
+        *self.done.lock().unwrap_or_else(PoisonError::into_inner) = true;
         self.done_cv.notify_all();
     }
 
     /// Whether the recording ended within `timeout`.
     fn wait_done(&self, timeout: Duration) -> bool {
-        let done = self.done.lock().unwrap();
-        *self.done_cv.wait_timeout_while(done, timeout, |d| !*d).unwrap().0
+        let done = self.done.lock().unwrap_or_else(PoisonError::into_inner);
+        *self.done_cv.wait_timeout_while(done, timeout, |d| !*d).unwrap_or_else(PoisonError::into_inner).0
     }
 }
 
@@ -109,8 +109,10 @@ fn has_index(file: &Path) -> bool {
         if &header[4..8] == b"moov" {
             return true;
         }
-        let size = match u32::from_be_bytes(header[..4].try_into().unwrap()) as u64 {
-            1 if f.read_exact(&mut header[8..]).is_ok() => u64::from_be_bytes(header[8..].try_into().unwrap()),
+        let size = match u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as u64 {
+            1 if f.read_exact(&mut header[8..]).is_ok() => u64::from_be_bytes([
+                header[8], header[9], header[10], header[11], header[12], header[13], header[14], header[15],
+            ]),
             // Zero runs to the end of the file: a box still being written.
             0 | 1 => return false,
             n => n,
@@ -270,11 +272,11 @@ impl Recording {
             let (on_start, on_fail, on_finish) = (shared.clone(), shared.clone(), shared.clone());
             RecordingCallbacks::new()
                 .on_start(move || {
-                    *on_start.started.lock().unwrap() = Some(Instant::now());
+                    *on_start.started.lock().unwrap_or_else(PoisonError::into_inner) = Some(Instant::now());
                     on_started();
                 })
                 .on_fail(move |e| {
-                    *on_fail.failed.lock().unwrap() = Some(e);
+                    *on_fail.failed.lock().unwrap_or_else(PoisonError::into_inner) = Some(e);
                     on_fail.set_done();
                 })
                 .on_finish(move || on_finish.set_done())
@@ -307,7 +309,7 @@ impl Recording {
         // The file is finalized after the stream stops; its delegate says when. A long take
         // can take a while, and its index is only written at the very end.
         let ended = self.shared.wait_done(FINALIZING);
-        if let Some(e) = self.shared.failed.lock().unwrap().take() {
+        if let Some(e) = self.shared.failed.lock().unwrap_or_else(PoisonError::into_inner).take() {
             bail!("Recording failed: {e}");
         }
         if !self.file.is_file() {
@@ -329,7 +331,7 @@ impl Recording {
             }
             std::thread::sleep(Duration::from_millis(200));
         }
-        let started = *self.shared.started.lock().unwrap();
+        let started = *self.shared.started.lock().unwrap_or_else(PoisonError::into_inner);
         Ok((started.context("The recording never started")?, duration))
     }
 }

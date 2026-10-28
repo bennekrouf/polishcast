@@ -4,7 +4,8 @@
 //! `SV_FPS`, `SV_CODEC` (h264 or hevc) and `SV_MAX_WIDTH` override the default options,
 //! `SV_SYSTEM_AUDIO` records the sound apps play and `SV_NO_MIC` leaves the microphone out;
 //! `SV_WINDOW` records the window with that id instead of the display (`list` prints them).
-
+// A test or an example may panic: that is a failed run, not a crash anyone sees.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use polishcast_capture::{Codec, Event, Options, Recorder, Source};
 use std::time::Duration;
 
@@ -30,6 +31,7 @@ extern "C" {
 fn main() {
     // Connects to the window server as the app does; window filters assert otherwise.
     #[cfg(target_os = "macos")]
+    // SAFETY: takes no arguments and only reads which display is the main one.
     unsafe {
         CGMainDisplayID();
     }

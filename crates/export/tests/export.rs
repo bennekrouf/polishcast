@@ -1,6 +1,7 @@
 //! End to end: a generated take through ffmpeg, the compositor and back. Skipped (passes) when
 //! ffmpeg isn't installed.
-
+// A test or an example may panic: that is a failed run, not a crash anyone sees.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use polishcast_core::{take, Button, Click, CursorSample, EventLog, Project};
 use polishcast_export::{export, ffmpeg, Format, Progress, Settings};
 use std::path::Path;

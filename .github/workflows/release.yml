@@ -27,6 +27,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # The desktop-kit tag the apps build against; move it to take a kit change.
+  DESKTOP_KIT_REF: v0.1.0
+
 jobs:
   # ── When triggered via workflow_dispatch: bump version and create the tag ──
   prepare:
@@ -88,6 +92,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # desktop-kit, the code every desktop app shares, sits beside the app
+      # (Cargo.toml: path = "../desktop-kit"), at the tag DESKTOP_KIT_REF pins.
+      - uses: actions/checkout@v4
+        with:
+          repository: bennekrouf/desktop-kit
+          ref: ${{ env.DESKTOP_KIT_REF }}
+          path: desktop-kit
+      - name: Put desktop-kit beside the app
+        shell: bash
+        run: mv desktop-kit ../desktop-kit
 
       # Installs the version rust-toolchain.toml pins (plus the Apple Silicon target).
       - run: rustup toolchain install && rustup target add aarch64-apple-darwin
@@ -291,6 +306,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # desktop-kit, the code every desktop app shares, sits beside the app
+      # (Cargo.toml: path = "../desktop-kit"), at the tag DESKTOP_KIT_REF pins.
+      - uses: actions/checkout@v4
+        with:
+          repository: bennekrouf/desktop-kit
+          ref: ${{ env.DESKTOP_KIT_REF }}
+          path: desktop-kit
+      - name: Put desktop-kit beside the app
+        shell: bash
+        run: mv desktop-kit ../desktop-kit
 
       # Installs the version and components rust-toolchain.toml pins.
       - run: rustup toolchain install

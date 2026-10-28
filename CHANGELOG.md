@@ -16,6 +16,16 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Fixed
+
+- PolishCast no longer closes at start when the menu bar or notification area
+  won't take its icon: it opens without the icon, and the window has every
+  control.
+- An export at a size no frame can be drawn at now stops with a message,
+  instead of closing PolishCast.
+
 ## [0.1.30] - 2026-10-27
 
 ### Added

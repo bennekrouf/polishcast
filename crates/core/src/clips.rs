@@ -24,7 +24,8 @@ pub fn clips(splits: &[f64], duration: f64) -> Vec<(f64, f64)> {
 /// The clip that holds recording time `t`.
 pub fn clip_at(splits: &[f64], duration: f64, t: f64) -> (f64, f64) {
     let all = clips(splits, duration);
-    all.iter().copied().find(|&(s, e)| t >= s && t < e).unwrap_or_else(|| *all.last().expect("at least one clip"))
+    // `clips` always returns at least one clip, so the last fallback is never reached.
+    all.iter().copied().find(|&(s, e)| t >= s && t < e).or_else(|| all.last().copied()).unwrap_or((0.0, duration))
 }
 
 /// Adds a split at `t`, unless it would leave a clip shorter than `MIN_CLIP_SECS`. Whether it

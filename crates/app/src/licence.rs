@@ -38,7 +38,7 @@ impl Pro {
 
     /// Whether `take` may be exported now. Re-read from disk: another window may have exported.
     pub fn may_export(mut self, take: &str) -> bool {
-        if self.status.peek().unlimited() {
+        if self.status.peek().is_pro() {
             return true;
         }
         let exported = load_exported();
@@ -49,7 +49,7 @@ impl Pro {
 
     /// Counts a finished export (nothing with Pro).
     pub fn exported(mut self, take: &str) {
-        if self.status.peek().unlimited() {
+        if self.status.peek().is_pro() {
             return;
         }
         let mut exported = load_exported();
@@ -63,12 +63,12 @@ impl Pro {
 /// Whether `take` may be exported, by the same rule and from the same file as the window's
 /// export panel: for `mcp`, which has no `Pro` signals.
 pub fn allows_export(take: &str) -> bool {
-    current().unlimited() || load_exported().allows(take)
+    current().is_pro() || load_exported().allows(take)
 }
 
 /// Counts a finished export of `take` against the free version's, as the window does.
 pub fn count_export(take: &str) {
-    if current().unlimited() {
+    if current().is_pro() {
         return;
     }
     let mut exported = load_exported();
@@ -79,7 +79,7 @@ pub fn count_export(take: &str) {
 
 /// Free exports not used yet; `None` when exports aren't limited.
 pub fn free_exports_left() -> Option<usize> {
-    (!current().unlimited()).then(|| load_exported().left())
+    (!current().is_pro()).then(|| load_exported().left())
 }
 
 fn data_dir() -> Option<PathBuf> {
@@ -116,14 +116,16 @@ fn save_shared(text: &str) {
     let Some(f) = shared_file() else { return };
     // Named after this app, so two apps writing at once don't share it.
     let tmp = f.with_extension(format!("{PRODUCT}.tmp"));
-    let _ = std::fs::create_dir_all(f.parent().unwrap()).and_then(|_| std::fs::write(&tmp, text)).and_then(|_| {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
-        }
-        std::fs::rename(&tmp, &f)
-    });
+    let _ = std::fs::create_dir_all(f.parent().unwrap_or(std::path::Path::new(".")))
+        .and_then(|_| std::fs::write(&tmp, text))
+        .and_then(|_| {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+            }
+            std::fs::rename(&tmp, &f)
+        });
 }
 
 /// This app's licence, or the one typed in another Mayorana app.
@@ -146,7 +148,7 @@ fn save(saved: &Saved) -> Result<(), String> {
     let json = serde_json::to_vec_pretty(saved).map_err(|e| e.to_string())?;
     // Written beside the target and renamed over it, so a crash can't leave half a file.
     let tmp = f.with_extension("tmp");
-    std::fs::create_dir_all(f.parent().unwrap())
+    std::fs::create_dir_all(f.parent().unwrap_or(std::path::Path::new(".")))
         .and_then(|_| std::fs::write(&tmp, json))
         .and_then(|_| std::fs::rename(&tmp, &f))
         .map_err(|e| format!("The licence couldn't be saved: {e}"))
