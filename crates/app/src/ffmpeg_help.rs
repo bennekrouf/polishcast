@@ -45,7 +45,7 @@ pub fn FfmpegHelp() -> Element {
                     href: "#",
                     onclick: move |e| {
                         e.prevent_default();
-                        crate::licence::open_url(DOWNLOAD_PAGE);
+                        desktop_kit::browser::open(DOWNLOAD_PAGE);
                     },
                     "download ffmpeg"
                 }

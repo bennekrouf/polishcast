@@ -3,7 +3,7 @@
 use crate::editor::Editor;
 use crate::settings::{Settings, SourceKind};
 use crate::{platform, takes};
-use desktop_kit::ui::{use_theme, Header, ProBadge, ProLook};
+use desktop_kit::ui::{use_theme, Banners, Header, ProButton, ProWindow};
 use dioxus::desktop::tao::event::Event as TaoEvent;
 use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon, TrayIconBuilder};
@@ -100,19 +100,10 @@ pub fn App() -> Element {
     // The licence is checked with api0 at start, then once a day.
     use_future(move || async move {
         let mut status = pro.status;
-        status.set(crate::licence::refresh_async(true).await);
+        status.set(desktop_kit::licence::refresh(true).await);
         loop {
             tokio::time::sleep(Duration::from_secs(3600)).await;
-            status.set(crate::licence::refresh_async(false).await);
-        }
-    });
-    // Delayed and best-effort: a release check is never worth slowing a cold start, and a
-    // failed one is not worth mentioning. Dismissed for this session only.
-    let mut update = use_signal(|| Option::<crate::update_check::UpdateInfo>::None);
-    use_future(move || async move {
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        if let Some(info) = crate::update_check::check().await {
-            update.set(Some(info));
+            status.set(desktop_kit::licence::refresh(false).await);
         }
     });
     let tray = use_hook(|| std::rc::Rc::new(Tray::new()));
@@ -372,20 +363,6 @@ pub fn App() -> Element {
     };
     let recording = matches!(status(), Status::Starting | Status::Recording(_));
 
-    let (pro_look, pro_title) = {
-        let status = pro.status.read();
-        let title = match *status {
-            crate::licence::Status::Pro(_) => "PolishCast Pro is active on this computer",
-            crate::licence::Status::Free => "Subscribe to PolishCast Pro, or paste your licence number",
-            crate::licence::Status::NotPro(ref a) if a.is_free() => {
-                "Free AI credits, no Pro: subscribe to PolishCast Pro to export every take"
-            }
-            _ => "Your licence doesn't make this PolishCast Pro right now",
-        };
-        (ProLook::of(&status), title)
-    };
-    let mut pro_open = pro.open;
-
     rsx! {
         style { {CSS} }
         Header {
@@ -400,60 +377,52 @@ pub fn App() -> Element {
                     "{label}"
                 }
             },
-            pro: rsx! { ProBadge { look: pro_look, title: pro_title, onclick: move |_| pro_open.set(Some(None)) } },
+            pro: rsx! { ProButton { pro: pro.kit(), hint: crate::licence::hint() } },
         }
-        if let Some(info) = update() {
-            div { class: "update-banner",
-                span { class: "update-banner-text",
-                    "PolishCast "
-                    strong { "{info.latest_version}" }
-                    " is available (you have {env!(\"CARGO_PKG_VERSION\")})."
-                }
-                a { class: "update-banner-link", href: "{info.download_url}", target: "_blank", "Download" }
-                button { class: "update-banner-dismiss", title: "Dismiss", onclick: move |_| update.set(None), "×" }
-            }
-        } else if let Some(app) = old_app() {
-            div { class: "update-banner",
-                span { class: "update-banner-text",
-                    if let Some(e) = old_app_error() {
-                        "Couldn't move Small Video to the Trash ({e}). Drag it there from {platform::FILE_MANAGER}."
+        Banners {
+            if let Some(app) = old_app() {
+                div { class: "kit-banner",
+                    span { class: "kit-banner-text",
+                        if let Some(e) = old_app_error() {
+                            "Couldn't move Small Video to the Trash ({e}). Drag it there from {platform::FILE_MANAGER}."
+                        } else {
+                            "Small Video, this app under its old name, is still in Applications. "
+                            "Opening it starts the old version."
+                        }
+                    }
+                    if old_app_error().is_some() {
+                        button {
+                            class: "kit-banner-link",
+                            onclick: {
+                                let app = app.clone();
+                                move |_| platform::reveal(&app)
+                            },
+                            "{platform::SHOW_IN_FOLDER}"
+                        }
                     } else {
-                        "Small Video, this app under its old name, is still in Applications. "
-                        "Opening it starts the old version."
+                        button {
+                            class: "kit-banner-link",
+                            onclick: {
+                                let app = app.clone();
+                                move |_| match crate::old_app::remove(&app) {
+                                    Ok(()) => old_app.set(None),
+                                    Err(e) => old_app_error.set(Some(e)),
+                                }
+                            },
+                            "Move to Trash"
+                        }
+                        button {
+                            class: "kit-banner-link",
+                            onclick: move |_| {
+                                settings.write().keep_old_app = true;
+                                settings.peek().save();
+                                old_app.set(None);
+                            },
+                            "Keep"
+                        }
                     }
+                    button { class: "kit-banner-close", title: "Dismiss", onclick: move |_| old_app.set(None), "×" }
                 }
-                if old_app_error().is_some() {
-                    button {
-                        class: "update-banner-link",
-                        onclick: {
-                            let app = app.clone();
-                            move |_| platform::reveal(&app)
-                        },
-                        "{platform::SHOW_IN_FOLDER}"
-                    }
-                } else {
-                    button {
-                        class: "update-banner-link",
-                        onclick: {
-                            let app = app.clone();
-                            move |_| match crate::old_app::remove(&app) {
-                                Ok(()) => old_app.set(None),
-                                Err(e) => old_app_error.set(Some(e)),
-                            }
-                        },
-                        "Move to Trash"
-                    }
-                    button {
-                        class: "update-banner-link",
-                        onclick: move |_| {
-                            settings.write().keep_old_app = true;
-                            settings.peek().save();
-                            old_app.set(None);
-                        },
-                        "Keep"
-                    }
-                }
-                button { class: "update-banner-dismiss", title: "Dismiss", onclick: move |_| old_app.set(None), "×" }
             }
         }
         div { class: "app",
@@ -587,7 +556,15 @@ pub fn App() -> Element {
                     },
                 }
             }
-            crate::licence::ProDialog {}
+            ProWindow {
+                pro: pro.kit(),
+                pitch: crate::licence::pitch(pro.refused.read().clone()),
+                details: crate::licence::details(pro),
+                on_close: move |_| {
+                    let mut refused = pro.refused;
+                    refused.set(None);
+                },
+            }
             crate::mcp::McpDialog {}
             if let Some(dir) = confirm_delete() {
                 DeleteDialog {

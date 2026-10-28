@@ -106,8 +106,7 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
         move |_| {
             // Without Pro, a take not exported before needs a free export left.
             if !pro.may_export(&take) {
-                let mut open = pro.open;
-                open.set(Some(Some(take.clone())));
+                pro.ask(Some(take.clone()));
                 return;
             }
             let (aspect, speed, blanks_cut) = {
