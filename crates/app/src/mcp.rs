@@ -635,7 +635,7 @@ fn export(args: &Value) -> Result<Value, String> {
             "The free version of PolishCast exports {} different takes, and they are used. Exporting one of them \
              again is free. PolishCast Pro exports every take: {}",
             polishcast_core::license::FREE_EXPORTS,
-            licence::BUY_URL
+            licence::buy_url()
         ));
     }
     let settings = Settings { format, long_side, fps };

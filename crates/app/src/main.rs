@@ -14,11 +14,9 @@ mod old_app;
 mod platform;
 mod settings;
 mod takes;
-mod update_check;
 mod views;
 
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder, WindowCloseBehaviour};
-use polishcast_core::license::StatusExt;
 
 fn main() {
     kit::init();
@@ -51,7 +49,7 @@ fn main() {
 
 /// The native title bar, as in every mayorana app: name, version and licence.
 pub fn window_title(status: &licence::Status) -> String {
-    format!("PolishCast {}{}", env!("CARGO_PKG_VERSION"), status.title_badge())
+    format!("PolishCast {}{}", env!("CARGO_PKG_VERSION"), licence::title_badge(status))
 }
 
 /// Where the web view keeps its data. The default is next to the executable, which isn't

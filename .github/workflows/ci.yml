@@ -27,7 +27,7 @@ concurrency:
 
 env:
   # The desktop-kit tag the apps build against; move it to take a kit change.
-  DESKTOP_KIT_REF: v0.1.1
+  DESKTOP_KIT_REF: v0.1.2
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
@@ -124,7 +124,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
+          # The image the release builds on: ScreenCaptureKit's Metal bindings
+          # need its newer SDK, which macos-15 doesn't have.
+          - os: macos-latest
             release-check: true
           - os: windows-latest
     runs-on: ${{ matrix.os }}
