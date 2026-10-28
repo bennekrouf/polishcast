@@ -3,6 +3,7 @@
 use crate::editor::Editor;
 use crate::settings::{Settings, SourceKind};
 use crate::{platform, takes};
+use desktop_kit::ui::{use_theme, Header, ProBadge, ProLook};
 use dioxus::desktop::tao::event::Event as TaoEvent;
 use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon, TrayIconBuilder};
@@ -90,6 +91,7 @@ fn clock(d: Duration) -> String {
 pub fn App() -> Element {
     let recorder = use_hook(Recorder::spawn);
     let pro = use_context_provider(crate::licence::Pro::new);
+    let theme = use_theme();
     // The title bar follows the licence, however it changes.
     use_effect(move || {
         dioxus::desktop::window().set_title(&crate::window_title(&pro.status.read()));
@@ -370,9 +372,36 @@ pub fn App() -> Element {
     };
     let recording = matches!(status(), Status::Starting | Status::Recording(_));
 
+    let (pro_look, pro_title) = {
+        let status = pro.status.read();
+        let title = match *status {
+            crate::licence::Status::Pro(_) => "PolishCast Pro is active on this computer",
+            crate::licence::Status::Free => "Subscribe to PolishCast Pro, or paste your licence number",
+            crate::licence::Status::NotPro(ref a) if a.is_free() => {
+                "Free AI credits, no Pro: subscribe to PolishCast Pro to export every take"
+            }
+            _ => "Your licence doesn't make this PolishCast Pro right now",
+        };
+        (ProLook::of(&status), title)
+    };
+    let mut pro_open = pro.open;
+
     rsx! {
         style { {CSS} }
-        crate::theme::ThemeToggle {}
+        Header {
+            theme,
+            on_mcp: move |_| mcp_open.set(true),
+            actions: rsx! {
+                button {
+                    class: if recording { "kit-btn kit-record kit-on" } else { "kit-btn kit-record" },
+                    disabled: status() == Status::Saving,
+                    onclick: move |_| toggle(true),
+                    span { class: "kit-record-dot" }
+                    "{label}"
+                }
+            },
+            pro: rsx! { ProBadge { look: pro_look, title: pro_title, onclick: move |_| pro_open.set(Some(None)) } },
+        }
         if let Some(info) = update() {
             div { class: "update-banner",
                 span { class: "update-banner-text",
@@ -436,13 +465,6 @@ pub fn App() -> Element {
                         onclick: move |_| sidebar_open.set(true),
                         "›"
                     }
-                    button {
-                        class: if recording { "record compact on" } else { "record compact" },
-                        title: "{label}",
-                        disabled: status() == Status::Saving,
-                        onclick: move |_| toggle(true),
-                        if recording { "■" } else { "●" }
-                    }
                 }
             }
             nav {
@@ -450,51 +472,13 @@ pub fn App() -> Element {
                 hidden: !sidebar_open(),
                 width: "{settings.read().sidebar_width()}px",
                 header {
-                    h1 {
-                        "PolishCast"
-                        // Which build is running, for bug reports and support.
-                        span { class: "app-version", {concat!("v", env!("CARGO_PKG_VERSION"))} }
-                    }
+                    h2 { "Recordings" }
                     div { class: "header-actions",
-                        button {
-                            class: if recording { "record on" } else { "record" },
-                            disabled: status() == Status::Saving,
-                            onclick: move |_| toggle(true),
-                            "{label}"
-                        }
                         button {
                             class: "panel-toggle",
                             title: "Hide recordings",
                             onclick: move |_| sidebar_open.set(false),
                             "‹"
-                        }
-                    }
-                }
-                {
-                    let mut open = pro.open;
-                    let (label, title) = match *pro.status.read() {
-                        crate::licence::Status::Pro(_) => ("Pro \u{2713}", "PolishCast Pro is active on this computer"),
-                        crate::licence::Status::Free => ("Get Pro\u{2026}", "Subscribe to PolishCast Pro, or paste your licence number"),
-                        crate::licence::Status::NotPro(ref a) if a.is_free() => ("Get Pro\u{2026}", "Free AI credits, no Pro: subscribe to PolishCast Pro to export every take"),
-                        _ => ("Renew Pro\u{2026}", "Your licence doesn't make this PolishCast Pro right now"),
-                    };
-                    rsx! {
-                        div { class: "sidebar-buttons",
-                            button { class: "pro-button", title: "{title}", onclick: move |_| open.set(Some(None)), "{label}" }
-                            button {
-                                class: "mcp-button",
-                                title: "Use PolishCast from Claude Desktop or Claude Code",
-                                onclick: move |_| mcp_open.set(true),
-                                "MCP"
-                            }
-                            // A link, not a button: the webview hands it to the browser.
-                            a {
-                                class: "button mcp-button",
-                                href: "{crate::feedback::contact_url()}",
-                                target: "_blank",
-                                title: "Ideas, bugs, questions: send them to the person who makes PolishCast",
-                                "Feedback"
-                            }
                         }
                     }
                 }

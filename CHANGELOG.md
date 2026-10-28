@@ -16,6 +16,16 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- The bar across the top of the window now looks and works the same in every
+  mayorana app: the name and version on the left, and on the right Record, MCP,
+  Feedback, the light/dark switch and the Pro badge in the corner.
+- Record is always in the bar, so it is one click away with the recordings panel
+  open or hidden; Pro, MCP and Feedback moved there from the panel.
+
 ## [0.1.31] - 2026-10-28
 
 ### Fixed
