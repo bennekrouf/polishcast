@@ -14,7 +14,25 @@
   --music-selected: #a7f3d0;
 }
 
-/* Light: when the OS is light, or the toggle says so (src/theme.rs). The
+/* The shared header's colours (desktop-kit). On body, so body.light below
+   changes them too. */
+body {
+  --kit-bar: var(--panel);
+  --kit-line: var(--line);
+  --kit-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  --kit-text: var(--text);
+  --kit-muted: var(--muted);
+  --kit-accent: var(--accent);
+}
+/* Record, in the header: red, and pulsing while it records. */
+.kit-header .kit-btn.kit-record { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; padding: 0 14px; }
+.kit-header .kit-btn.kit-record:hover { background: color-mix(in srgb, var(--accent) 85%, #000); }
+.kit-header .kit-btn.kit-record.kit-on { animation: pulse 1.2s ease-in-out infinite; }
+.kit-record-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+.kit-record.kit-on .kit-record-dot { border-radius: 1px; }
+.sidebar header h2 { font-size: 13px; margin: 0; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+
+/* Light: when the OS is light, or the toggle in the header says so. The
    recording preview (.stage .content) stays black in both: it is the video. */
 body.light {
   color-scheme: light;
@@ -68,7 +86,7 @@ button.link { background: none; border: none; color: var(--muted); padding: 0 4p
 .pad { padding: 24px; }
 
 /* Layout */
-.app { display: flex; height: 100vh; }
+.app { display: flex; height: calc(100vh - var(--kit-header-h)); }
 .sidebar {
   width: 260px;
   flex: none;
@@ -102,7 +120,7 @@ button.link { background: none; border: none; color: var(--muted); padding: 0 4p
 }
 button.panel-toggle { padding: 2px 8px; color: var(--muted); font-size: 15px; line-height: 1.2; }
 button.panel-toggle:hover { color: var(--text); }
-button.record.compact { padding: 4px 8px; font-size: 11px; }
+
 .main { flex: 1; min-width: 0; display: flex; }
 
 /* What the next recording takes in */
@@ -121,8 +139,6 @@ button.record.compact { padding: 4px 8px; font-size: 11px; }
   padding: 3px 4px;
 }
 
-button.record { background: var(--accent); border-color: var(--accent); font-weight: 600; padding: 6px 16px; }
-button.record.on { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.6; } }
 
 .takes { list-style: none; padding: 0; margin: 12px 0 0; }
@@ -213,7 +229,6 @@ button.record.on { animation: pulse 1.2s ease-in-out infinite; }
   flex: none;
   border-left: 1px solid var(--line);
   padding: 16px;
-  padding-top: 48px; /* clear of the theme toggle */
   overflow-y: auto;
 }
 .field { display: block; margin-bottom: 14px; }
@@ -327,8 +342,6 @@ button kbd { margin-left: 6px; }
 .timeline .zoom { z-index: 1; }
 .blanks { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; }
 
-/* PolishCast Pro */
-.pro-button { align-self: flex-start; color: var(--zoom); border-color: var(--zoom); }
 .free-credits { margin-top: 10px; }
 .free-row { display: flex; gap: 6px; align-items: center; }
 .free-row .licence-key { flex: 1; min-width: 0; }
@@ -348,8 +361,6 @@ button kbd { margin-left: 6px; }
 .button-link { color: var(--zoom); text-decoration: none; align-self: center; padding: 0 6px; }
 .button-link:hover { text-decoration: underline; }
 
-/* Version and update banner, as in GitAgent and TrackCut */
-.app-version { font-size: 10px; font-weight: 400; color: var(--muted); margin-left: 6px; font-variant-numeric: tabular-nums; }
 /* Update, notice and consent banners: GitAgent's, so every app shows them alike. */
 .update-banner {
     position: fixed;
@@ -468,35 +479,6 @@ body.light .update-banner, body.light .consent-banner { background: #1e5fb8; }
 }
 .timeline .clip.selected { outline: 2px solid var(--selected); outline-offset: -1px; }
 
-/* ── Theme toggle (top-right) — same as ShipScreen and GitAgent ── */
-.btn-theme {
-    position: fixed;
-    top: 10px;
-    right: 14px;
-    z-index: 90; /* under a modal's backdrop, so an open dialog dims it */
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    color: var(--muted);
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-}
-.btn-theme:hover { border-color: var(--zoom); color: var(--zoom); }
-.theme-icon {
-    width: 15px; height: 15px;
-    fill: none; stroke: currentColor; stroke-width: 1.75;
-    stroke-linecap: round; stroke-linejoin: round;
-}
-
-/* "Use PolishCast from Claude": what to paste, and where. */
-.sidebar-buttons { display: flex; gap: 6px; align-self: flex-start; }
-.mcp-button { color: var(--muted); }
 .mcp-modal { width: min(620px, calc(100vw - 32px)); }
 .mcp-modal h3 { margin: 6px 0 0; font-size: 13px; }
 .mcp-snippet-wrap { position: relative; }

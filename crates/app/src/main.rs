@@ -3,7 +3,6 @@
 
 mod area_picker;
 mod editor;
-mod feedback;
 mod ffmpeg_help;
 mod instance;
 mod kit;
@@ -15,7 +14,6 @@ mod old_app;
 mod platform;
 mod settings;
 mod takes;
-mod theme;
 mod update_check;
 mod views;
 
