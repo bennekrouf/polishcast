@@ -11,7 +11,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{Receiver, Sender};
 use polishcast_core::take;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 use windows::Win32::Foundation::POINT;
 use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTOPRIMARY};
@@ -85,7 +85,7 @@ impl GraphicsCaptureApiHandler for Handler {
 
     fn on_frame_arrived(&mut self, frame: &mut Frame, _: InternalCaptureControl) -> Result<(), BoxError> {
         let first = {
-            let mut started = self.shared.started.lock().unwrap();
+            let mut started = self.shared.started.lock().unwrap_or_else(PoisonError::into_inner);
             let first = started.is_none();
             started.get_or_insert_with(Instant::now);
             first
@@ -211,7 +211,12 @@ impl Active {
         }
         encoder.finish().map_err(|e| anyhow!("Finishing the recording: {e}"))?;
 
-        let started = self.shared.started.lock().unwrap().context("The recording never started (no frame arrived)")?;
+        let started = self
+            .shared
+            .started
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .context("The recording never started (no frame arrived)")?;
         if !self.dir.join(take::SCREEN).is_file() {
             bail!("The recording wasn't saved.");
         }

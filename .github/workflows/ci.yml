@@ -1,50 +1,109 @@
 name: CI
 
-# Fast feedback on every branch and PR.
+# Fast feedback on every pull request and on main.
 #
-# release.yml is the heavy pipeline: it only runs on `v*` tags and takes ~15
-# minutes to produce signed macOS/Windows artifacts. This workflow exists so
-# that a regression `cargo test` can already see never costs you that round
-# trip plus a download and a manual click-through.
+# Every desktop app has this same file. Only the platform list, the Linux
+# packages and the binary name in the C runtime check differ.
+#
+# release.yml is the heavy pipeline: it only runs on `v*` tags and produces
+# signed artifacts. This workflow exists so a regression `cargo test` can
+# already see never costs that round trip.
 on:
   pull_request:
   push:
     branches: [main]
 
+# A newer push on the same ref cancels the run it superseded.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
+  # The desktop-kit tag the apps build against; move it to take a kit change.
+  DESKTOP_KIT_REF: v0.1.0
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
 jobs:
-  # ── macOS: blocking ────────────────────────────────────────────────────────
-  # The ScreenCaptureKit backend only builds here. Hosted runners have ffmpeg via Homebrew;
-  # the export tests skip themselves where it's missing.
-  check-macos:
-    runs-on: macos-15
+  # ── Formatting: blocking ───────────────────────────────────────────────────
+  # No compile, reports in ~20s. .githooks/pre-commit formats what is staged,
+  # so this is a real gate rather than a check that is red forever.
+  fmt:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # desktop-kit, the code every desktop app shares, sits beside the app
+      # (Cargo.toml: path = "../desktop-kit"), at the tag DESKTOP_KIT_REF pins.
+      - uses: actions/checkout@v4
+        with:
+          repository: bennekrouf/desktop-kit
+          ref: ${{ env.DESKTOP_KIT_REF }}
+          path: desktop-kit
+      - name: Put desktop-kit beside the app
+        shell: bash
+        run: mv desktop-kit ../desktop-kit
+
       # Installs the version and components rust-toolchain.toml pins.
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace --locked
 
-  # ── Windows: blocking ──────────────────────────────────────────────────────
-  # As in TrackCut: catches Windows-only breakage (the Windows.Graphics.Capture backend,
-  # cfg(windows) code, WebView2, the MSVC build of ring) and runs the same tests there. The
-  # windows-latest image has MSVC and the Windows SDK.
-  check-windows:
-    runs-on: windows-latest
+  # ── Tests + clippy: blocking, on macOS and Windows ──────────────────────────
+  # The release builds for each of these; testing on one would leave the
+  # others to be found out at release time.
+  # PolishCast ships no Linux build. The ScreenCaptureKit backend only builds
+  # on macOS; hosted runners have ffmpeg via Homebrew, and the export tests
+  # skip themselves where it's missing. Windows covers the
+  # Windows.Graphics.Capture backend.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            release-check: true
+          - os: windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      # desktop-kit, the code every desktop app shares, sits beside the app
+      # (Cargo.toml: path = "../desktop-kit"), at the tag DESKTOP_KIT_REF pins.
+      - uses: actions/checkout@v4
+        with:
+          repository: bennekrouf/desktop-kit
+          ref: ${{ env.DESKTOP_KIT_REF }}
+          path: desktop-kit
+      - name: Put desktop-kit beside the app
+        shell: bash
+        run: mv desktop-kit ../desktop-kit
+
+      # Installs the version and components rust-toolchain.toml pins.
       - run: rustup toolchain install
+
       - uses: Swatinem/rust-cache@v2
+
+      # --locked fails the run if Cargo.lock has drifted from Cargo.toml.
       - name: Test
         run: cargo test --workspace --locked
+
+      # Dioxus expands rsx! differently in release builds: a component key
+      # that reads a prop moved into the same component compiles in debug and
+      # fails in release. Catch that here, not at tag time. On macOS only,
+      # since it is a second full build.
+      - name: Release-mode check
+        if: matrix.release-check
+        run: cargo check --workspace --release --locked
+
+      # The app must start on a PC without the Visual C++ Redistributable, so
+      # the .exe may not import VCRUNTIME140*.dll (see .cargo/config.toml).
+      # Debug links the same C runtime as release.
+      - name: Check static C runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo build -p polishcast --locked
+          ./scripts/check-windows-crt.ps1 target\debug\polishcast.exe
+
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings

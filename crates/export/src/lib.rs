@@ -188,7 +188,8 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     };
     let scene = Scene::new(project, &events);
     let (width, height) = scene.output_size(settings.long_side);
-    let compositor = Compositor::with_image(&scene, width, height, image.as_ref().map(|i| i.as_ref()));
+    let compositor =
+        Compositor::with_image(&scene, width, height, image.as_ref().map(|i| i.as_ref())).map_err(|e| anyhow!(e))?;
     let (sw, sh) = source_size(&scene, width, height);
     // Blanks cut: the picture skips them frame by frame, the sound through a filter graph.
     // Faster than recorded: the recording is read at `fps ÷ speed` (fewer frames per second

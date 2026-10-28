@@ -895,6 +895,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop-kit"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "dirs",
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3542,6 +3554,7 @@ dependencies = [
  "anyhow",
  "arboard",
  "chrono",
+ "desktop-kit",
  "dioxus",
  "dirs",
  "image",
@@ -3577,6 +3590,7 @@ dependencies = [
 name = "polishcast-core"
 version = "0.1.30"
 dependencies = [
+ "desktop-kit",
  "serde",
  "serde_json",
 ]
@@ -4193,7 +4207,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

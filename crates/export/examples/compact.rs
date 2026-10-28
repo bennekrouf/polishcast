@@ -1,7 +1,8 @@
 //! Shrinks a recording in place, as the app does after each take: `cargo run -p
 //! polishcast-export --example compact -- <screen.mov> [sound offset]`. With an offset, the
 //! `sound.mov` next to it is mixed in first, as after recording one window with the Mac's sound.
-
+// A test or an example may panic: that is a failed run, not a crash anyone sees.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 fn main() -> anyhow::Result<()> {
     let file = std::env::args().nth(1).ok_or_else(|| anyhow::anyhow!("usage: compact <screen.mov>"))?;
     if let Some(offset) = std::env::args().nth(2) {

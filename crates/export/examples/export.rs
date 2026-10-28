@@ -1,6 +1,7 @@
 //! Exports a take without the app: `cargo run --release -p polishcast-export --example export
 //! -- <take dir> <out.mp4> [long side] [fps]`.
-
+// A test or an example may panic: that is a failed run, not a crash anyone sees.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 use polishcast_export::{export, Progress, Settings};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};

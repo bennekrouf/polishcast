@@ -6,6 +6,7 @@ mod editor;
 mod feedback;
 mod ffmpeg_help;
 mod instance;
+mod kit;
 mod licence;
 mod limits;
 mod mcp;
@@ -19,8 +20,10 @@ mod update_check;
 mod views;
 
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder, WindowCloseBehaviour};
+use polishcast_core::license::StatusExt;
 
 fn main() {
+    kit::init();
     // `polishcast mcp`: the takes over stdio for an MCP client, and no window.
     if std::env::args().nth(1).as_deref() == Some("mcp") {
         return mcp::serve();
