@@ -393,3 +393,71 @@ fn music_is_lowered_while_the_voice_speaks() {
     assert!((alone - under - 12.0).abs() < 2.0, "under the voice {under:.1} dB, alone {alone:.1} dB");
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn background_noise_is_taken_out_of_the_voice_but_not_the_music() {
+    let Some(ffmpeg) = ffmpeg() else {
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("polishcast-denoise-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // A voice (440 Hz) from 1 to 3 s and 5 to 7 s, over a room's hiss (pink noise) and hum.
+    let status = Command::new(&ffmpeg)
+        .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x200:rate=30:duration=8"])
+        .args(["-f", "lavfi", "-i"])
+        .arg("aevalsrc='if(between(t,1,3)+between(t,5,7),0.3*sin(2*PI*440*t),0)+0.01*sin(2*PI*50*t)':s=48000:d=8")
+        .args(["-f", "lavfi", "-i", "anoisesrc=color=pink:amplitude=0.03:d=8:r=48000"])
+        .args(["-filter_complex", "[1:a][2:a]amix=inputs=2:normalize=0[a]", "-map", "0:v", "-map", "[a]"])
+        .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"])
+        .arg(dir.join(take::SCREEN))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    // Music (1.5 kHz) in the pause from 3 to 5 s.
+    let status = Command::new(&ffmpeg)
+        .args(["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=1500:duration=10"])
+        .arg(dir.join("music-1.wav"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let export_with = |denoise: Option<f32>, music: bool| {
+        let mut project = Project::new(8.0, 320, 200, &EventLog::default());
+        project.denoise = denoise;
+        if music {
+            project.music = vec![polishcast_core::music::Music {
+                file: "music-1.wav".into(),
+                name: "Tone".into(),
+                start: 3.2,
+                end: 4.8,
+                from: 0.0,
+                volume: 0.05,
+                fade: 0.0,
+            }];
+        }
+        project.save(&dir.join(take::PROJECT)).unwrap();
+        let out = dir.join(format!("out-{denoise:?}-{music}.mp4"));
+        export(
+            &dir,
+            &out,
+            Settings { format: Format::Mp4, long_side: 320, fps: 30 },
+            &Progress::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        out
+    };
+    let (before, after) = (export_with(None, false), export_with(Some(0.5), false));
+    let hiss = |file| band_db(&ffmpeg, file, 3000, (3.3, 4.7));
+    let hum = |file| band_db(&ffmpeg, file, 50, (3.3, 4.7));
+    let voice = |file| band_db(&ffmpeg, file, 440, (5.3, 6.7));
+    assert!(hiss(&after) < hiss(&before) - 10.0, "hiss {:.1} → {:.1} dB", hiss(&before), hiss(&after));
+    assert!(hum(&after) < hum(&before) - 10.0, "hum {:.1} → {:.1} dB", hum(&before), hum(&after));
+    assert!((voice(&after) - voice(&before)).abs() < 1.0, "voice {:.1} → {:.1} dB", voice(&before), voice(&after));
+
+    // The music in the pause, quieter than the hiss was, is left as it is.
+    let (plain, cleaned) = (export_with(None, true), export_with(Some(1.0), true));
+    let music = |file| band_db(&ffmpeg, file, 1500, (3.5, 4.5));
+    assert!((music(&cleaned) - music(&plain)).abs() < 1.0, "music {:.1} → {:.1} dB", music(&plain), music(&cleaned));
+    std::fs::remove_dir_all(&dir).unwrap();
+}

@@ -340,7 +340,7 @@ button kbd { margin-left: 6px; }
 }
 .timeline .cut.kept { background: none; border: 1px dashed rgba(161, 161, 170, 0.6); }
 .timeline .zoom { z-index: 1; }
-.blanks { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; }
+.blanks, .noise { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; }
 
 .modal-actions .left { margin-right: auto; }
 .button-link { color: var(--zoom); text-decoration: none; align-self: center; padding: 0 6px; }

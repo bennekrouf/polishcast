@@ -16,6 +16,16 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- "Reduce background noise" in the editor takes the steady hum, hiss or fan
+  noise out of your voice when you export, so a take recorded in a noisy room
+  still sounds clean. A Strength slider sets how much is taken out. Music you
+  added is left as it is, and the preview still plays the sound as recorded.
+  Claude, Codex and other MCP apps can turn it on too.
+
 ## [0.1.35] - 2026-10-29
 
 ### Added

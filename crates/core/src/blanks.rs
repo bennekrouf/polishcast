@@ -17,6 +17,20 @@ pub struct Loudness {
     pub db: Vec<f32>,
 }
 
+impl Loudness {
+    /// The level of the steady background noise (a fan, hum, room hiss): what the quietest
+    /// tenth of the recording sits at, between words and in the pauses. Digital silence (the
+    /// gap before the microphone starts) doesn't count. `None` when all of it is silent.
+    pub fn noise_floor(&self) -> Option<f32> {
+        let mut heard: Vec<f32> = self.db.iter().copied().filter(|d| *d > -100.0).collect();
+        if heard.is_empty() {
+            return None;
+        }
+        heard.sort_by(f32::total_cmp);
+        Some(heard[heard.len() / 10])
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BlankParams {
     /// Quieter than this counts as silence (dBFS, RMS over a window).
@@ -181,6 +195,14 @@ mod tests {
 
     fn bounds(cuts: &[Cut]) -> Vec<(f64, f64)> {
         cuts.iter().map(|c| ((c.start * 1000.0).round() / 1000.0, (c.end * 1000.0).round() / 1000.0)).collect()
+    }
+
+    #[test]
+    fn the_noise_floor_is_the_quiet_between_words() {
+        // Digital silence first, then speech with short pauses at the room's -62 dB.
+        let l = loudness(&[(1.0, -200.0), (3.0, -20.0), (0.5, -62.0), (3.0, -25.0), (0.5, -62.0)]);
+        assert_eq!(l.noise_floor(), Some(-62.0));
+        assert_eq!(loudness(&[(2.0, -200.0)]).noise_floor(), None);
     }
 
     #[test]

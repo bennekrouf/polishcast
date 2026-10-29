@@ -201,28 +201,31 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     let cutting = timeline.parts.len() != 1 || timeline.duration() < scene.project.duration;
     let gif = settings.format == Format::Gif;
     let tracks = if gif { 0 } else { sound::audio_tracks(&ffmpeg, &screen)? };
-    let voice = match sound::filter(&timeline, cutting, speed, tracks) {
-        Some(graph) if tracks > 0 => Some(graph),
-        _ => None,
-    };
     // Music, placed in video time: inputs after the recording.
     let music = if gif { Vec::new() } else { scene.project.placed_music() };
     let songs: Vec<PathBuf> = music.iter().map(|m| dir.join(&scene.project.music[m.index].file)).collect();
     if let Some(missing) = songs.iter().find(|s| !s.is_file()) {
         bail!("The music file {} is missing from the take's folder.", missing.display());
     }
-    // Lowered where the voice speaks, found from the recording's loudness (kept by the editor).
-    let speaking = match scene.project.duck {
-        Some(_) if !music.is_empty() && tracks > 0 => {
-            let kept = std::fs::read(dir.join(take::LOUDNESS)).ok().and_then(|b| serde_json::from_slice(&b).ok());
-            let loudness = match kept {
-                Some(l) => Some(l),
-                None => sound::loudness(&ffmpeg, &screen)?,
-            };
-            loudness.map(|l| scene.project.speaking(&l))
+    // The recording's loudness (kept by the editor): where the voice speaks, to lower the music
+    // there, and the level of the background noise to take out.
+    let ducking = scene.project.duck.is_some() && !music.is_empty();
+    let loudness = if tracks > 0 && (ducking || scene.project.denoise.is_some()) {
+        let kept = std::fs::read(dir.join(take::LOUDNESS)).ok().and_then(|b| serde_json::from_slice(&b).ok());
+        match kept {
+            Some(l) => Some(l),
+            None => sound::loudness(&ffmpeg, &screen)?,
         }
+    } else {
+        None
+    };
+    let denoise = scene.project.denoise.zip(loudness.as_ref().and_then(|l| l.noise_floor()));
+    let denoise = denoise.map(|(strength, floor)| sound::Denoise { strength, floor });
+    let voice = match sound::filter(&timeline, cutting, speed, tracks, denoise) {
+        Some(graph) if tracks > 0 => Some(graph),
         _ => None,
     };
+    let speaking = loudness.filter(|_| ducking).map(|l| scene.project.speaking(&l));
     let duck = scene.project.duck.zip(speaking.as_deref());
     let sound_filter = sound::with_music(voice, tracks, &music, duck, timeline.duration() / speed);
     let total = (timeline.duration() * fps as f64 / speed).ceil() as u64;

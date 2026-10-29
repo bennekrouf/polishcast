@@ -39,7 +39,14 @@ pub struct Project {
     /// it as it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duck: Option<f32>,
+    /// Steady background noise (a fan, hum, room hiss) is taken out of the voice at export,
+    /// this strongly, from 0 (lightly) to 1; `None` leaves the sound as recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub denoise: Option<f32>,
 }
+
+/// How strongly background noise is reduced when it's turned on.
+pub const DENOISE_STRENGTH: f32 = 0.5;
 
 /// The speeds the editor offers.
 pub const SPEEDS: &[f64] = &[1.0, 1.25, 1.5, 2.0, 3.0];
@@ -136,6 +143,7 @@ impl Project {
             speed: 1.0,
             music: Vec::new(),
             duck: None,
+            denoise: None,
         }
     }
 
