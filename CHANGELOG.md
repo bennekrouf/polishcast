@@ -16,6 +16,17 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- Cuts are smoother. Where blanks are cut or a clip is removed, the sound now
+  crossfades into the next part instead of dipping to silence, so the room
+  noise carries on and you no longer hear the join. The cursor and the zoom
+  glide to where they are after the cut instead of jumping there, in the
+  preview and in the export. When the screen changed during the cut, the
+  exported video dissolves into it over a fifth of a second.
+
 ## [0.1.36] - 2026-10-29
 
 ### Added

@@ -6,7 +6,7 @@
 
 pub mod compose;
 
-use polishcast_core::camera::viewport_at;
+use polishcast_core::camera::{smootherstep, viewport_at};
 use polishcast_core::cursor::{activity, click_at, idle_opacity, smooth};
 use polishcast_core::events::position_at;
 use polishcast_core::{Click, CursorSample, EventLog, Project, Viewport};
@@ -74,6 +74,10 @@ const CURSOR_SIZE: f32 = 0.012;
 /// How far a click's ring spreads, in cursor heights.
 const RIPPLE_REACH: f32 = 1.1;
 
+/// Seconds of recording after a cut over which the camera and the pointer travel from where
+/// they were before it to where they are now, instead of jumping there.
+pub const BRIDGE_SECS: f64 = 0.3;
+
 /// A project ready to render: the cursor path is smoothed once, not per frame.
 pub struct Scene {
     pub project: Project,
@@ -81,6 +85,8 @@ pub struct Scene {
     clicks: Vec<Click>,
     /// When the pointer moved or clicked, for fading it out at rest.
     activity: Vec<f64>,
+    /// Each cut, as recording times: where the video leaves off and where it picks up.
+    joins: Vec<(f64, f64)>,
 }
 
 impl Scene {
@@ -89,7 +95,16 @@ impl Scene {
         let mut clicks = events.clicks.clone();
         clicks.sort_by(|a, b| a.t.total_cmp(&b.t));
         let activity = activity(&events.cursor, &clicks);
-        Self { project, cursor, clicks, activity }
+        let joins = project.timeline().parts.windows(2).map(|w| (w[0].1, w[1].0)).collect();
+        Self { project, cursor, clicks, activity, joins }
+    }
+
+    /// Just after a cut: the recording time the video left off at, and how far (0 to 1, eased)
+    /// the camera and pointer have come from there.
+    fn bridge(&self, t: f64) -> Option<(f64, f32)> {
+        let &(left, resumed) = self.joins.iter().find(|&&(_, at)| t >= at && t < at + BRIDGE_SECS)?;
+        // The last moment shown, not the first one cut.
+        Some((left - 1e-6, smootherstep((t - resumed) / BRIDGE_SECS) as f32))
     }
 
     /// Output size for the project's aspect, with the longer side `long_side` pixels (even
@@ -112,7 +127,18 @@ impl Scene {
             self.project.width as f32 / self.project.height as f32,
             Rect { x: pad, y: pad, w: width as f32 - 2.0 * pad, h: height as f32 - 2.0 * pad },
         );
-        let source = viewport_at(&self.project.zooms, t);
+        let bridge = self.bridge(t);
+        let mut source = viewport_at(&self.project.zooms, t);
+        if let Some((left, k)) = bridge {
+            let was = viewport_at(&self.project.zooms, left);
+            let mix = |a: f32, b: f32| a + (b - a) * k;
+            source = Viewport {
+                x: mix(was.x, source.x),
+                y: mix(was.y, source.y),
+                w: mix(was.w, source.w),
+                h: mix(was.h, source.h),
+            };
+        }
         // Where a point of the screen lands in the frame, if it's in the part on view.
         let place = |(x, y): (f32, f32)| {
             let (u, v) = ((x - source.x) / source.w, (y - source.y) / source.h);
@@ -121,12 +147,14 @@ impl Scene {
         };
         let size = CURSOR_SIZE * style.cursor_scale * content.w / source.w;
         let opacity = if style.hide_idle_cursor { idle_opacity(&self.activity, t) } else { 1.0 };
-        let cursor = position_at(&self.cursor, t).and_then(place).filter(|_| opacity > 0.0).map(|(x, y)| Cursor {
-            x,
-            y,
-            size,
-            opacity,
-        });
+        let at = match (bridge, position_at(&self.cursor, t)) {
+            (Some((left, k)), Some((x, y))) => {
+                let (wx, wy) = position_at(&self.cursor, left).unwrap_or((x, y));
+                Some((wx + (x - wx) * k, wy + (y - wy) * k))
+            }
+            (_, now) => now,
+        };
+        let cursor = at.and_then(place).filter(|_| opacity > 0.0).map(|(x, y)| Cursor { x, y, size, opacity });
         // Drawn where the (smoothed) cursor was at the click, so it rings around the tip.
         let ripple = style.click_effect.then(|| click_at(&self.clicks, t)).flatten().and_then(|(c, k)| {
             let (x, y) = place(position_at(&self.cursor, c.t).unwrap_or((c.x, c.y)))?;
@@ -253,6 +281,33 @@ mod tests {
         assert!(Scene::new(p.clone(), &events).frame(5.0, 1600, 1000).cursor.is_none());
         p.style.hide_idle_cursor = false;
         assert_eq!(Scene::new(p, &events).frame(5.0, 1600, 1000).cursor.unwrap().opacity, 1.0);
+    }
+
+    #[test]
+    fn the_camera_and_pointer_travel_across_a_cut_instead_of_jumping() {
+        let mut p = Project::new(10.0, 1600, 1000, &EventLog::default());
+        p.style.hide_idle_cursor = false;
+        p.style.cursor_smoothing = 0.0;
+        // Full screen until the cut at 3–5 s, zoomed in after it; the pointer moved during it.
+        p.zooms = vec![polishcast_core::Zoom { start: 4.0, end: 9.0, scale: 2.0, x: 0.5, y: 0.5 }];
+        p.removed = vec![(3.0, 5.0)];
+        let events = EventLog {
+            cursor: vec![
+                CursorSample { t: 0.0, x: 0.2, y: 0.5 },
+                CursorSample { t: 4.0, x: 0.2, y: 0.5 },
+                CursorSample { t: 4.5, x: 0.6, y: 0.5 },
+            ],
+            clicks: vec![],
+        };
+        let s = Scene::new(p, &events);
+        let before = s.frame(2.99, 1600, 1000);
+        let resumed = s.frame(5.0, 1600, 1000);
+        assert_eq!(resumed.source, before.source, "picks up where it left off");
+        assert!((resumed.cursor.unwrap().x - before.cursor.unwrap().x).abs() < 0.01);
+        let halfway = s.frame(5.0 + BRIDGE_SECS / 2.0, 1600, 1000).source.w;
+        assert!(1.0 > halfway && halfway > 0.5, "{halfway}");
+        let arrived = s.frame(5.0 + BRIDGE_SECS, 1600, 1000);
+        assert_eq!(arrived.source.w, 0.5);
     }
 
     #[test]

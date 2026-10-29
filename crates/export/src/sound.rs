@@ -269,32 +269,52 @@ pub fn with_music(
     })
 }
 
-/// Seconds faded out and in at each cut, so a cut never clicks.
+/// Seconds faded in at the start of the video and out at its end, so it never clicks there.
 const FADE_SECS: f64 = 0.01;
 
+/// Seconds two parts overlap where a cut joins them. Long enough that the room's noise flows
+/// on through the join instead of dropping out, short enough to stay inside the silence kept
+/// next to the words.
+const CROSSFADE_SECS: f64 = 0.05;
+
 /// An ffmpeg filter graph taking input 1's sound (its `tracks` tracks mixed, cleaned with
-/// `denoise`) and producing `[aout]`: only the timeline's parts, joined, each faded in and out
-/// over a few milliseconds. The noise is taken out before cutting, so each part starts with
-/// the noise already measured.
+/// `denoise`) and producing `[aout]`: only the timeline's parts, crossfaded into each other at
+/// equal power. The noise is taken out before cutting, so each part starts with the noise
+/// already measured.
 pub fn cut_filter(timeline: &Timeline, tracks: usize, denoise: Option<Denoise>) -> String {
-    let n = timeline.parts.len();
+    let parts = &timeline.parts;
+    let n = parts.len();
+    let len = |i: usize| parts[i].1 - parts[i].0;
+    // The overlap at the join before part `i` (none before the first or after the last), never
+    // longer than the part on either side.
+    let overlap: Vec<f64> = (0..=n)
+        .map(|i| if i == 0 || i == n { 0.0 } else { CROSSFADE_SECS.min(len(i - 1)).min(len(i)).max(0.001) })
+        .collect();
     let mut graph = format!("{},asplit={n}", voice(1, tracks, denoise));
     for i in 0..n {
         graph += &format!("[s{i}]");
     }
-    for (i, &(start, end)) in timeline.parts.iter().enumerate() {
-        let fade = FADE_SECS.min((end - start) / 2.0);
-        graph += &format!(
-            ";[s{i}]atrim=start={start:.6}:end={end:.6},asetpts=PTS-STARTPTS,\
-             afade=t=in:d={fade:.6},afade=t=out:st={:.6}:d={fade:.6}[a{i}]",
-            (end - start - fade).max(0.0)
-        );
+    for (i, &(start, end)) in parts.iter().enumerate() {
+        // Each side of a join reaches half the overlap into the stretch cut: the joined sound
+        // is as long as the picture, and each crossfade is centred on its cut.
+        let (from, to) = (start - overlap[i] / 2.0, end + overlap[i + 1] / 2.0);
+        let fade = FADE_SECS.min((to - from) / 2.0);
+        graph += &format!(";[s{i}]atrim=start={from:.6}:end={to:.6},asetpts=PTS-STARTPTS");
+        if i == 0 {
+            graph += &format!(",afade=t=in:d={fade:.6}");
+        }
+        if i == n - 1 {
+            graph += &format!(",afade=t=out:st={:.6}:d={fade:.6}", (to - from - fade).max(0.0));
+        }
+        graph += if n == 1 { "[aout]".to_string() } else { format!("[a{i}]") }.as_str();
     }
-    graph += ";";
-    for i in 0..n {
-        graph += &format!("[a{i}]");
+    let mut joined = "a0".to_string();
+    for (i, d) in overlap.iter().enumerate().take(n).skip(1) {
+        let out = if i == n - 1 { "aout".to_string() } else { format!("j{i}") };
+        graph += &format!(";[{joined}][a{i}]acrossfade=d={d:.6}:c1=qsin:c2=qsin[{out}]");
+        joined = out;
     }
-    graph + &format!("concat=n={n}:v=0:a=1[aout]")
+    graph
 }
 
 #[cfg(test)]
@@ -313,7 +333,7 @@ mod tests {
             "[1:a:0]aresample=async=1:first_pts=0,atempo=2.000000[aout]"
         );
         let both = filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, true, 1.25, 1, None).unwrap();
-        assert!(both.contains("concat=n=2:v=0:a=1[acut];[acut]atempo=1.250000[aout]"), "{both}");
+        assert!(both.contains("acrossfade=d=0.050000:c1=qsin:c2=qsin[acut];[acut]atempo=1.250000[aout]"), "{both}");
     }
 
     #[test]
@@ -393,7 +413,7 @@ mod tests {
         assert!(cut.starts_with(&format!("{one},{DENOISE},asplit=2[s0][s1];")), "{cut}");
         let both = filter(&parts, true, 1.5, 1, d).unwrap();
         assert!(both.starts_with(&format!("{one},{DENOISE},asplit=2")), "{both}");
-        assert!(both.ends_with("concat=n=2:v=0:a=1[acut];[acut]atempo=1.500000[aout]"), "{both}");
+        assert!(both.ends_with("acrossfade=d=0.050000:c1=qsin:c2=qsin[acut];[acut]atempo=1.500000[aout]"), "{both}");
         assert_eq!(both.matches("afftdn").count(), 1, "{both}");
 
         // Two tracks: denoised once, after they're mixed.
@@ -431,8 +451,34 @@ mod tests {
         let tl = Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] };
         let f = cut_filter(&tl, 1, None);
         assert!(f.starts_with("[1:a:0]aresample=async=1:first_pts=0,asplit=2[s0][s1];"));
-        assert!(f.contains("[s0]atrim=start=1.000000:end=4.000000,asetpts=PTS-STARTPTS"));
-        assert!(f.contains("afade=t=out:st=2.990000:d=0.010000[a0]"));
-        assert!(f.ends_with("[a0][a1]concat=n=2:v=0:a=1[aout]"));
+        // Each side reaches 25 ms into the cut, faded in at the start and out at the end only.
+        assert!(
+            f.contains(";[s0]atrim=start=1.000000:end=4.025000,asetpts=PTS-STARTPTS,afade=t=in:d=0.010000[a0];"),
+            "{f}"
+        );
+        assert!(
+            f.contains(
+                ";[s1]atrim=start=5.975000:end=10.000000,asetpts=PTS-STARTPTS,afade=t=out:st=4.015000:d=0.010000[a1];"
+            ),
+            "{f}"
+        );
+        assert!(f.ends_with(";[a0][a1]acrossfade=d=0.050000:c1=qsin:c2=qsin[aout]"), "{f}");
+    }
+
+    #[test]
+    fn three_parts_are_crossfaded_in_turn_and_short_ones_overlap_less() {
+        let tl = Timeline { parts: vec![(0.0, 2.0), (3.0, 3.02), (5.0, 8.0)] };
+        let f = cut_filter(&tl, 1, None);
+        assert!(f.contains("[a0][a1]acrossfade=d=0.020000:c1=qsin:c2=qsin[j1];"), "{f}");
+        assert!(f.ends_with("[j1][a2]acrossfade=d=0.020000:c1=qsin:c2=qsin[aout]"), "{f}");
+        assert!(f.contains("[s1]atrim=start=2.990000:end=3.030000,"), "{f}");
+    }
+
+    #[test]
+    fn a_single_part_is_trimmed_without_a_crossfade() {
+        let f = cut_filter(&Timeline { parts: vec![(2.0, 6.0)] }, 1, None);
+        assert!(f.ends_with(
+            ";[s0]atrim=start=2.000000:end=6.000000,asetpts=PTS-STARTPTS,afade=t=in:d=0.010000,afade=t=out:st=3.990000:d=0.010000[aout]"
+        ), "{f}");
     }
 }

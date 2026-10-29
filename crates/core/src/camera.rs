@@ -38,7 +38,7 @@ pub fn viewport_at(zooms: &[Zoom], t: f64) -> Viewport {
 
 /// 0 → 1 with zero velocity and acceleration at both ends: no visible jolt when the camera
 /// starts or stops.
-fn smootherstep(x: f64) -> f64 {
+pub fn smootherstep(x: f64) -> f64 {
     x * x * x * (x * (x * 6.0 - 15.0) + 10.0)
 }
 
