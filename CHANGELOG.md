@@ -16,6 +16,20 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- Claude, Codex and other MCP apps can now record a take themselves, so they can
+  make a whole demo video with nobody touching the menu bar: start recording,
+  use the app being shown, stop, add the zooms and export. They can record the
+  whole screen, one display, one window or a region, with or without the
+  microphone and the Mac's sound. It's off until you turn on "Let Claude or
+  Codex record the screen" in the MCP window.
+- A recording started this way counts down in the menu bar first, then shows
+  who started it next to the time. Stop Recording there stops it at any time,
+  and it stops by itself after 10 minutes unless a longer length was asked for.
+
 ## [0.1.34] - 2026-10-28
 
 ### Added

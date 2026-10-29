@@ -6,8 +6,9 @@
 //! editor may have open too. So every change here reads the file, applies the change and writes
 //! it back at once, and an open editor takes it in as one undo step (`Doc::reload_if_changed`).
 //!
-//! Recording is not here: starting a screen recording from a chat is something the person does
-//! themselves, from the menu bar or the window.
+//! Recording is the running app's: start_recording and the other recording tools ask it to
+//! (`remote`), opening it if needed, so the menu bar shows the recording and can stop it, and
+//! the take is made as when recorded by hand. Only if the person turned it on in this window.
 //!
 //! Requests are handled one at a time, so an export holds the next call until it is done.
 
@@ -15,7 +16,7 @@ use crate::editor::{
     clean_export_name, cut_blanks, export_name, export_path, exports_of, measure, toggle_clip, FRAME_RATES,
     GIF_FRAME_RATES, GIF_SIZES, RESOLUTIONS,
 };
-use crate::{licence, takes};
+use crate::{licence, remote, takes};
 use dioxus::prelude::*;
 use polishcast_core::project::{Aspect, Background, SPEEDS};
 use polishcast_core::zoom::{self, auto_zoom, AutoZoom, Zoom};
@@ -25,6 +26,7 @@ use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
+use std::sync::OnceLock;
 
 /// The newest protocol revision this server speaks. A client asking for an older one gets its
 /// own back; everything used here exists in all of them.
@@ -37,7 +39,15 @@ get_take shows a take's zooms, clips and cuts, style and length. set_zooms edits
 again from the clicks), set_clips splits the recording and leaves parts out, set_blanks cuts the pauses where \
 nobody speaks, set_style changes the look, the frame's shape and the playback speed. Times are seconds of the \
 recording. export writes an MP4 or a GIF next to the take's folder; the free version exports 10 different \
-takes. Recording itself isn't available here: the person starts it from PolishCast's menu bar icon.";
+takes. Recording: start_recording records the screen, a display, a window or a region (list_sources gives \
+their ids), after a countdown, until stop_recording, which saves it as a take with zooms suggested from its \
+clicks; recording_status says what is being recorded, cancel_recording throws it away. The menu bar shows the \
+recording, and the person can stop it there at any time. It must be turned on by the person first, in \
+PolishCast's MCP window; until then the recording tools say how. A demo: start_recording, drive the app being \
+shown, stop_recording, set_zooms with suggest, export.";
+
+/// The client's name, from `initialize`, shown in the menu bar while it records.
+static CLIENT: OnceLock<String> = OnceLock::new();
 
 pub fn serve() {
     let stdin = std::io::stdin();
@@ -62,6 +72,9 @@ fn handle(id: Value, message: &Value) -> Value {
     let params = &message["params"];
     match method {
         "initialize" => {
+            if let Some(name) = params["clientInfo"]["name"].as_str() {
+                let _ = CLIENT.set(name.to_string());
+            }
             let asked = params["protocolVersion"].as_str().unwrap_or(PROTOCOL);
             let version = if asked <= PROTOCOL { asked } else { PROTOCOL };
             result(
@@ -245,6 +258,80 @@ fn tools() -> Value {
                 "required": ["take", "format"],
             },
         },
+        {
+            "name": "list_sources",
+            "description": "What can be recorded: the displays (main first), the windows by app, and the \
+                            microphones, with the ids start_recording takes. Whether this computer can record \
+                            a window or a region, and the computer's sound.",
+            "inputSchema": { "type": "object", "properties": {} },
+        },
+        {
+            "name": "start_recording",
+            "description": format!(
+                "Starts recording, as the person would from PolishCast's menu bar: the menu bar counts down, \
+                 then shows the recording with Stop Recording. Answers once the first frame is written, with \
+                 the recording_id, which is also the take's name. PolishCast's own windows are left out of a \
+                 display's recording. Fails if a recording is already in progress, if the person hasn't turned \
+                 on recording from Claude or Codex in PolishCast, or without the Screen Recording permission \
+                 (the error says how to grant it); the first recording with the microphone asks for that \
+                 permission. Stops by itself after max_duration_secs (default {}).",
+                remote::MAX_DURATION
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source": {
+                        "type": "object",
+                        "description": "What to record. Default: the whole display the pointer is on.",
+                        "properties": {
+                            "kind": { "type": "string", "enum": ["display", "window", "region"] },
+                            "display_id": { "type": "integer", "description": "For a display, from list_sources. Default: the one the pointer is on." },
+                            "window_id": { "type": "integer", "description": "For a window, from list_sources." },
+                            "app": { "type": "string", "description": "For a window: the app's name, instead of window_id. Its window on screen is recorded." },
+                            "x": { "type": "number", "description": "For a region, in points from the main display's top-left, as list_sources gives the displays." },
+                            "y": { "type": "number" },
+                            "width": { "type": "number" },
+                            "height": { "type": "number" },
+                        },
+                        "required": ["kind"],
+                    },
+                    "microphone": { "type": "boolean", "description": "Default true." },
+                    "microphone_device": { "type": "string", "description": "A microphone's device or name from list_sources. Default: the system's." },
+                    "system_audio": { "type": "boolean", "description": "Also the sound apps play. Default: as set in PolishCast." },
+                    "countdown_secs": { "type": "integer", "minimum": 0, "maximum": 10, "description": format!("Default {}.", remote::COUNTDOWN) },
+                    "max_duration_secs": { "type": "integer", "minimum": 1, "maximum": crate::limits::MAX_LENGTH.as_secs(), "description": format!("Default {}.", remote::MAX_DURATION) },
+                    "name": { "type": "string", "description": "The take's folder name. Default: the date and time it starts." },
+                },
+            },
+        },
+        {
+            "name": "stop_recording",
+            "description": "Stops the recording and saves it as a take, ready for set_zooms (whose suggested zooms \
+                            are already in) and export. Answers once saved, which can take a few seconds: the \
+                            take's name, its length, the clicks recorded and why it stopped. A recording that \
+                            already stopped (the person stopped it, or max_duration_secs) gives its take. Only \
+                            recordings started with start_recording can be stopped here.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "recording_id": { "type": "string", "description": "From start_recording. Default: the one in progress." } },
+            },
+        },
+        {
+            "name": "recording_status",
+            "description": "Whether PolishCast is idle, counting down, recording or saving; what, since when, who \
+                            started it and its recording_id; whether recording from here is turned on; and how \
+                            the last recording started here ended.",
+            "inputSchema": { "type": "object", "properties": {} },
+        },
+        {
+            "name": "cancel_recording",
+            "description": "Stops the recording started with start_recording and moves it to the Trash, so no take \
+                            is left. During the countdown, nothing was recorded.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "recording_id": { "type": "string", "description": "Default: the one in progress." } },
+            },
+        },
     ])
 }
 
@@ -257,8 +344,19 @@ fn call(name: &str, args: &Value) -> Result<Value, String> {
         "set_blanks" => set_blanks(args),
         "set_style" => set_style(args),
         "export" => export(args),
+        "list_sources" => ask("sources", args),
+        "start_recording" => ask("start", args),
+        "stop_recording" => ask("stop", args),
+        "recording_status" => ask("status", args),
+        "cancel_recording" => ask("cancel", args),
         _ => Err(format!("no tool {name}")),
     }
+}
+
+/// Asks the running app (`remote`).
+fn ask(op: &str, args: &Value) -> Result<Value, String> {
+    let client = CLIENT.get().map_or("MCP", String::as_str);
+    remote::ask(op, args, client, remote::wait_for(op, args))
 }
 
 // ── One take ─────────────────────────────────────────────────────────────────────────────
@@ -705,6 +803,7 @@ fn desktop_config_path() -> &'static str {
 #[component]
 pub fn McpDialog() -> Element {
     let mut open = use_context::<McpOpen>().0;
+    let mut settings = use_context::<Signal<crate::settings::Settings>>();
     if !open() {
         return rsx! {};
     }
@@ -723,8 +822,23 @@ pub fn McpDialog() -> Element {
                     p { class: "hint",
                         "Ask Claude to polish your takes: add or tighten zooms, cut the pauses, trim the start and end, \
                          change the background or the frame's shape, and export an MP4 or a GIF. An open take shows \
-                         its changes within a couple of seconds, and \u{2318}Z takes them back. Recording stays yours, \
-                         from the menu bar."
+                         its changes within a couple of seconds, and \u{2318}Z takes them back."
+                    }
+                    label { class: "check",
+                        input {
+                            r#type: "checkbox",
+                            checked: settings.read().allow_mcp_recording,
+                            onchange: move |e| {
+                                settings.write().allow_mcp_recording = e.checked();
+                                settings.peek().save();
+                            },
+                        }
+                        "Let Claude or Codex record the screen"
+                    }
+                    p { class: "hint",
+                        "So it can make a whole demo by itself: start recording, use the app, stop and polish. The menu \
+                         bar counts down first, shows who is recording, and Stop Recording there stops it at any time. \
+                         A recording started this way stops by itself after 10 minutes unless asked for longer."
                     }
                     h3 { "1 · Claude Desktop" }
                     p { class: "hint",
@@ -741,7 +855,8 @@ pub fn McpDialog() -> Element {
                     Snippet { text: codex.clone() }
                     h3 { "4 · Try it" }
                     p { class: "hint",
-                        "Ask: \u{201c}Cut the pauses in my last take, make it 16:9 and export a GIF.\u{201d}"
+                        "Ask: \u{201c}Cut the pauses in my last take, make it 16:9 and export a GIF.\u{201d} With \
+                         recording on: \u{201c}Record a 30-second demo of the export dialog in Safari and make it a GIF.\u{201d}"
                     }
                     p { class: "hint mcp-note",
                         "Claude in the browser (claude.ai) can\u{2019}t use this: it only connects to servers on the internet, \

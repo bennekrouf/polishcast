@@ -51,6 +51,30 @@ pub fn new_dir() -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
+/// A new, empty folder for the next take, named `name` (checked with [`check_name`]).
+pub fn new_named_dir(name: &str) -> std::io::Result<PathBuf> {
+    let dir = library().join(name);
+    std::fs::create_dir_all(library())?;
+    std::fs::create_dir(&dir)?;
+    Ok(dir)
+}
+
+/// `name`, trimmed, if it can be a take's folder name: not empty or hidden, no path separators
+/// or characters Windows refuses, and no take of that name yet.
+pub fn check_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() || name.starts_with('.') || name.chars().count() > 100 {
+        return Err("the name is 1 to 100 characters and doesn't start with a dot".into());
+    }
+    if name.chars().any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control()) {
+        return Err("the name can't have / \\ : * ? \" < > | in it".into());
+    }
+    if library().join(name).exists() {
+        return Err(format!("there is already a take named {name}"));
+    }
+    Ok(name.to_string())
+}
+
 /// Writes the take's project, with zooms suggested from its clicks.
 pub fn create_project(t: &Take) -> std::io::Result<Project> {
     let events: EventLog =
@@ -137,6 +161,14 @@ mod tests {
         std::fs::write(dir.join(take::SCREEN), b"not really a movie").unwrap();
         move_to_trash(&dir).unwrap();
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn a_take_name_is_a_plain_folder_name() {
+        assert_eq!(check_name("  Demo of the export  ").unwrap(), "Demo of the export");
+        for bad in ["", "  ", ".hidden", "a/b", "a\\b", "a:b", "x".repeat(101).as_str()] {
+            assert!(check_name(bad).is_err(), "{bad:?}");
+        }
     }
 
     #[test]
