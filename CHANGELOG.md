@@ -30,6 +30,12 @@ user sees in the update prompt should all be accounted for.
   who started it next to the time. Stop Recording there stops it at any time,
   and it stops by itself after 10 minutes unless a longer length was asked for.
 
+### Changed
+
+- Recording by Claude, Codex and other MCP apps is on as soon as PolishCast is
+  installed, so they can make a demo video right away. Turn off "Let Claude or
+  Codex record the screen" in the MCP window if you'd rather they never record.
+
 ## [0.1.34] - 2026-10-28
 
 ### Added
