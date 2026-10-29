@@ -279,7 +279,19 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
         encoder.arg(out).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().context("Starting ffmpeg")?;
     let encoder_errors = collect(encoder.stderr.take());
 
-    let pumped = pump(&mut decoder, &mut encoder, &scene, &timeline, &compositor, (sw, sh), read_fps, progress, cancel);
+    let dissolve = (DISSOLVE_SECS * fps as f64).round() as u32;
+    let pumped = pump(
+        &mut decoder,
+        &mut encoder,
+        &scene,
+        &timeline,
+        &compositor,
+        (sw, sh),
+        read_fps,
+        dissolve,
+        progress,
+        cancel,
+    );
     if pumped.is_err() {
         let _ = decoder.kill();
         let _ = encoder.kill();
@@ -304,6 +316,10 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     Ok(())
 }
 
+/// Seconds over which the screen after a cut fades in over the one before it. Where the screen
+/// didn't change during the cut, both are the same and nothing shows.
+const DISSOLVE_SECS: f64 = 0.2;
+
 /// Reads decoded frames, draws each one the timeline shows, and hands it to the encoder.
 #[allow(clippy::too_many_arguments)]
 fn pump(
@@ -315,12 +331,20 @@ fn pump(
     (sw, sh): (u32, u32),
     // The rate the recording is read at: the export's, divided by the playback speed.
     read_fps: f64,
+    // Frames the screen dissolves over after each cut.
+    dissolve: u32,
     progress: &Progress,
     cancel: &AtomicBool,
 ) -> Result<()> {
     let mut input = decoder.stdout.take().context("decoder output")?;
     let mut output = encoder.stdin.take().context("encoder input")?;
-    let mut source = vec![0u8; sw as usize * sh as usize * 4];
+    let size = sw as usize * sh as usize * 4;
+    let mut source = vec![0u8; size];
+    // With cuts between parts: the last screen shown, and the one shown before the latest cut,
+    // which the next frames dissolve from. Swapped, never copied.
+    let joins = timeline.parts.len() > 1 && dissolve > 0;
+    let (mut shown, mut held) = if joins { (vec![0u8; size], vec![0u8; size]) } else { (Vec::new(), Vec::new()) };
+    let (mut skipped, mut fading) = (false, 0u32);
     let (width, height) = compositor.size();
     let mut frame_out = Pixmap::new(width, height).context("frame size")?;
     // `j` counts recording frames, `i` the frames written (the cut ones are skipped).
@@ -337,12 +361,27 @@ fn pump(
         let t = j as f64 / read_fps;
         j += 1;
         if !timeline.shows(t) {
+            skipped = true;
             continue;
         }
+        if joins {
+            if skipped && i > 0 {
+                std::mem::swap(&mut held, &mut shown);
+                fading = dissolve;
+            }
+            if fading > 0 {
+                blend(&mut source, &held, (dissolve - fading + 1) as f32 / (dissolve + 1) as f32);
+                fading -= 1;
+            }
+        }
+        skipped = false;
         let src = PixmapRef::from_bytes(&source, sw, sh).context("source frame")?;
         let frame = scene.frame(t, width, height);
         compositor.draw(&frame, src, &mut frame_out);
         output.write_all(frame_out.data()).map_err(|e| anyhow!("Writing to the encoder: {e}"))?;
+        if joins {
+            std::mem::swap(&mut source, &mut shown);
+        }
         i += 1;
         progress.done.store(i, Ordering::Relaxed);
     }
@@ -350,6 +389,14 @@ fn pump(
         bail!("The video has no frames: the recording is empty, or everything in it is cut");
     }
     Ok(())
+}
+
+/// `frame` faded in over `before` by `k` (0 to 1): pixel bytes mixed in proportion.
+fn blend(frame: &mut [u8], before: &[u8], k: f32) {
+    let w = (k.clamp(0.0, 1.0) * 256.0) as u16;
+    for (f, &b) in frame.iter_mut().zip(before) {
+        *f = ((b as u16 * (256 - w) + *f as u16 * w) >> 8) as u8;
+    }
 }
 
 /// Size to decode the recording at: enough for the deepest zoom to stay sharp, never more than
@@ -407,6 +454,16 @@ mod tests {
         assert!(e.is::<FfmpegMissing>());
         assert_eq!(e.to_string(), "Getting ffmpeg: Could not reach github.com");
         assert!(!anyhow::anyhow!("Reading the project").is::<FfmpegMissing>());
+    }
+
+    #[test]
+    fn a_dissolve_mixes_the_screens_in_proportion() {
+        let mut frame = [200u8, 0, 100, 255];
+        blend(&mut frame, &[0, 200, 100, 255], 0.25);
+        assert_eq!(frame, [50, 150, 100, 255]);
+        let mut whole = [9u8];
+        blend(&mut whole, &[0], 1.0);
+        assert_eq!(whole, [9]);
     }
 
     #[test]
