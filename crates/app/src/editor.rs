@@ -11,7 +11,7 @@ use polishcast_core::blanks::redetect;
 use polishcast_core::clips;
 use polishcast_core::history::History;
 use polishcast_core::music::{self, Music};
-use polishcast_core::project::{Aspect, Background, SPEEDS};
+use polishcast_core::project::{Aspect, Background, DENOISE_STRENGTH, SPEEDS};
 use polishcast_core::zoom::{self, Zoom};
 use polishcast_core::{take, BlankParams, EventLog, Loudness, Project};
 use polishcast_export::{Format, Progress, Settings};
@@ -237,12 +237,17 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
             }
         }
     });
-    // Lowering the music under the voice needs the recording's loudness: measured once, and
-    // again when Try again puts it back to Unknown.
+    // Lowering the music under the voice needs the recording's loudness, and so does knowing
+    // whether there's any sound to take noise out of: measured once, and again when Try again
+    // puts it back to Unknown.
     use_effect({
         let dir = dir.clone();
         move || {
-            if doc.project.read().duck.is_some() && *loudness.read() == Measure::Unknown {
+            let wanted = {
+                let p = doc.project.read();
+                p.duck.is_some() || p.denoise.is_some()
+            };
+            if wanted && *loudness.read() == Measure::Unknown {
                 let (dir, mut loudness) = (dir.clone(), loudness);
                 loudness.set(Measure::Measuring);
                 spawn(async move {
@@ -641,6 +646,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     StylePanel { doc, dir: dir.clone(), picture_url: picture_url.clone() }
                 }
                 BlanksPanel { doc, dir: dir.clone(), loudness }
+                NoisePanel { doc, loudness }
                 ExportPanel { doc, dir: dir.clone() }
             }
         }

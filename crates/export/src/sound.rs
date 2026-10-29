@@ -47,6 +47,36 @@ fn source(input: u8, tracks: usize) -> String {
     graph + &format!("amix=inputs={tracks}:duration=longest:normalize=0")
 }
 
+/// Steady background noise (a fan, hum, room hiss) taken out of the voice: `strength` from 0
+/// to 1, and `floor`, the recording's noise level in dB ([`Loudness::noise_floor`]).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Denoise {
+    pub strength: f32,
+    pub floor: f32,
+}
+
+impl Denoise {
+    /// The filters, to follow a chain after a comma: the hum and rumble below 80 Hz cut, then
+    /// ffmpeg's `afftdn` lowering what sits at the noise's level by 6 to 30 dB. `afftdn` only
+    /// lowers it fully when told a level above the noise as RMS measures it (by about 20 dB):
+    /// told the level itself, it takes out a few dB whatever the strength, and told much more,
+    /// it starts to eat quiet words.
+    fn filters(self) -> String {
+        let finite = |v: f32, or: f32| if v.is_finite() { v } else { or };
+        let reduce = 6.0 + 24.0 * finite(self.strength, 0.0).clamp(0.0, 1.0);
+        let floor = finite(self.floor, -60.0);
+        format!("highpass=f=80,afftdn=nr={reduce:.1}:nf={:.1}", (floor + 22.0).clamp(-80.0, -20.0))
+    }
+}
+
+/// [`source`], with the background noise taken out when `denoise` says so.
+fn voice(input: u8, tracks: usize, denoise: Option<Denoise>) -> String {
+    match denoise {
+        Some(d) => format!("{},{}", source(input, tracks), d.filters()),
+        None => source(input, tracks),
+    }
+}
+
 /// The graph mixing `sound` (input 1), which starts `offset` seconds into the recording, into
 /// the recording's `tracks` sound tracks (input 0), producing `[a]`.
 fn mix_graph(tracks: usize, offset: f64) -> String {
@@ -146,17 +176,23 @@ pub fn atempo(speed: f64) -> String {
 }
 
 /// The filter graph for the sound, taking input 1's `tracks` tracks and producing `[aout]`:
-/// mixed into one, the timeline's parts when anything is cut, sped up when `speed` isn't 1.
-/// `None` when the one track is used as is.
-pub fn filter(timeline: &Timeline, cutting: bool, speed: f64, tracks: usize) -> Option<String> {
+/// mixed into one, cleaned of background noise with `denoise`, the timeline's parts when
+/// anything is cut, sped up when `speed` isn't 1. `None` when the one track is used as is.
+pub fn filter(
+    timeline: &Timeline,
+    cutting: bool,
+    speed: f64,
+    tracks: usize,
+    denoise: Option<Denoise>,
+) -> Option<String> {
     let fast = (speed - 1.0).abs() > 1e-9;
     match (cutting, fast) {
-        (false, false) if tracks <= 1 => None,
-        (false, false) => Some(format!("{}[aout]", source(1, tracks))),
-        (true, false) => Some(cut_filter(timeline, tracks)),
-        (false, true) => Some(format!("{},{}[aout]", source(1, tracks), atempo(speed))),
+        (false, false) if tracks <= 1 && denoise.is_none() => None,
+        (false, false) => Some(format!("{}[aout]", voice(1, tracks, denoise))),
+        (true, false) => Some(cut_filter(timeline, tracks, denoise)),
+        (false, true) => Some(format!("{},{}[aout]", voice(1, tracks, denoise), atempo(speed))),
         (true, true) => {
-            let cut = cut_filter(timeline, tracks);
+            let cut = cut_filter(timeline, tracks, denoise);
             let cut = cut.strip_suffix("[aout]").unwrap_or(&cut);
             Some(format!("{cut}[acut];[acut]{}[aout]", atempo(speed)))
         }
@@ -236,11 +272,13 @@ pub fn with_music(
 /// Seconds faded out and in at each cut, so a cut never clicks.
 const FADE_SECS: f64 = 0.01;
 
-/// An ffmpeg filter graph taking input 1's sound (its `tracks` tracks mixed) and producing
-/// `[aout]`: only the timeline's parts, joined, each faded in and out over a few milliseconds.
-pub fn cut_filter(timeline: &Timeline, tracks: usize) -> String {
+/// An ffmpeg filter graph taking input 1's sound (its `tracks` tracks mixed, cleaned with
+/// `denoise`) and producing `[aout]`: only the timeline's parts, joined, each faded in and out
+/// over a few milliseconds. The noise is taken out before cutting, so each part starts with
+/// the noise already measured.
+pub fn cut_filter(timeline: &Timeline, tracks: usize, denoise: Option<Denoise>) -> String {
     let n = timeline.parts.len();
-    let mut graph = format!("{},asplit={n}", source(1, tracks));
+    let mut graph = format!("{},asplit={n}", voice(1, tracks, denoise));
     for i in 0..n {
         graph += &format!("[s{i}]");
     }
@@ -269,9 +307,12 @@ mod tests {
         assert_eq!(atempo(2.0), "atempo=2.000000");
         assert_eq!(atempo(3.0), "atempo=2,atempo=1.500000");
         let tl = Timeline { parts: vec![(0.0, 10.0)] };
-        assert_eq!(filter(&tl, false, 1.0, 1), None);
-        assert_eq!(filter(&tl, false, 2.0, 1).unwrap(), "[1:a:0]aresample=async=1:first_pts=0,atempo=2.000000[aout]");
-        let both = filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, true, 1.25, 1).unwrap();
+        assert_eq!(filter(&tl, false, 1.0, 1, None), None);
+        assert_eq!(
+            filter(&tl, false, 2.0, 1, None).unwrap(),
+            "[1:a:0]aresample=async=1:first_pts=0,atempo=2.000000[aout]"
+        );
+        let both = filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, true, 1.25, 1, None).unwrap();
         assert!(both.contains("concat=n=2:v=0:a=1[acut];[acut]atempo=1.250000[aout]"), "{both}");
     }
 
@@ -280,8 +321,8 @@ mod tests {
         let tl = Timeline { parts: vec![(0.0, 10.0)] };
         let mixed = "[1:a:0]aresample=async=1:first_pts=0[m0];[1:a:1]aresample=async=1:first_pts=0[m1];\
                      [m0][m1]amix=inputs=2:duration=longest:normalize=0";
-        assert_eq!(filter(&tl, false, 1.0, 2).unwrap(), format!("{mixed}[aout]"));
-        let cut = cut_filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, 2);
+        assert_eq!(filter(&tl, false, 1.0, 2, None).unwrap(), format!("{mixed}[aout]"));
+        let cut = cut_filter(&Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] }, 2, None);
         assert!(cut.starts_with(&format!("{mixed},asplit=2[s0][s1];")), "{cut}");
     }
 
@@ -337,9 +378,58 @@ mod tests {
     }
 
     #[test]
+    fn the_noise_is_taken_out_of_the_voice_before_cutting_and_speeding_up() {
+        const DENOISE: &str = "highpass=f=80,afftdn=nr=18.0:nf=-40.0";
+        let d = Some(Denoise { strength: 0.5, floor: -62.0 });
+        let whole = Timeline { parts: vec![(0.0, 10.0)] };
+        let parts = Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] };
+        let one = "[1:a:0]aresample=async=1:first_pts=0";
+
+        // The one track as is: denoising alone needs a graph.
+        assert_eq!(filter(&whole, false, 1.0, 1, None), None);
+        assert_eq!(filter(&whole, false, 1.0, 1, d).unwrap(), format!("{one},{DENOISE}[aout]"));
+        assert_eq!(filter(&whole, false, 2.0, 1, d).unwrap(), format!("{one},{DENOISE},atempo=2.000000[aout]"));
+        let cut = filter(&parts, true, 1.0, 1, d).unwrap();
+        assert!(cut.starts_with(&format!("{one},{DENOISE},asplit=2[s0][s1];")), "{cut}");
+        let both = filter(&parts, true, 1.5, 1, d).unwrap();
+        assert!(both.starts_with(&format!("{one},{DENOISE},asplit=2")), "{both}");
+        assert!(both.ends_with("concat=n=2:v=0:a=1[acut];[acut]atempo=1.500000[aout]"), "{both}");
+        assert_eq!(both.matches("afftdn").count(), 1, "{both}");
+
+        // Two tracks: denoised once, after they're mixed.
+        let mixed = filter(&parts, true, 1.0, 2, d).unwrap();
+        assert!(mixed.contains(&format!("amix=inputs=2:duration=longest:normalize=0,{DENOISE},asplit=2")), "{mixed}");
+
+        // Off, everything is as it was.
+        assert_eq!(filter(&parts, true, 1.0, 2, None).unwrap(), cut_filter(&parts, 2, None));
+        assert!(!filter(&parts, true, 1.5, 1, None).unwrap().contains("afftdn"));
+    }
+
+    #[test]
+    fn the_strength_and_the_noise_floor_set_afftdn() {
+        let f = |strength, floor| Denoise { strength, floor }.filters();
+        assert_eq!(f(0.0, -70.0), "highpass=f=80,afftdn=nr=6.0:nf=-48.0");
+        assert_eq!(f(1.0, -50.0), "highpass=f=80,afftdn=nr=30.0:nf=-28.0");
+        // Kept to what afftdn accepts.
+        assert_eq!(f(2.0, -30.0), "highpass=f=80,afftdn=nr=30.0:nf=-20.0");
+        assert_eq!(f(-1.0, -120.0), "highpass=f=80,afftdn=nr=6.0:nf=-80.0");
+        assert_eq!(f(f32::NAN, f32::NAN), "highpass=f=80,afftdn=nr=6.0:nf=-38.0");
+    }
+
+    #[test]
+    fn music_is_never_denoised() {
+        let m = Placed { index: 0, at: 0.0, until: 4.0, from: 0.0, volume: 0.5, fade_in: 0.0, fade_out: 0.0 };
+        let tl = Timeline { parts: vec![(0.0, 10.0)] };
+        let voice = filter(&tl, false, 1.0, 1, Some(Denoise { strength: 0.5, floor: -60.0 }));
+        let g = with_music(voice, 1, &[m], None, 10.0).unwrap();
+        let (voice, music) = g.split_once("[voice];").unwrap();
+        assert!(voice.contains("afftdn") && !music.contains("afftdn"), "{g}");
+    }
+
+    #[test]
     fn the_filter_keeps_each_part() {
         let tl = Timeline { parts: vec![(1.0, 4.0), (6.0, 10.0)] };
-        let f = cut_filter(&tl, 1);
+        let f = cut_filter(&tl, 1, None);
         assert!(f.starts_with("[1:a:0]aresample=async=1:first_pts=0,asplit=2[s0][s1];"));
         assert!(f.contains("[s0]atrim=start=1.000000:end=4.000000,asetpts=PTS-STARTPTS"));
         assert!(f.contains("afade=t=out:st=2.990000:d=0.010000[a0]"));

@@ -1,4 +1,4 @@
-//! The editor's side panels: style, zoom, music, clips and blanks.
+//! The editor's side panels: style, zoom, music, clips, blanks and background noise.
 
 use super::*;
 
@@ -555,6 +555,47 @@ pub(super) fn BlanksPanel(doc: Doc, dir: PathBuf, loudness: Signal<Measure>) -> 
                 p { class: "hint",
                     if cuts == 1 { "1 cut" } else { "{cuts} cuts" }
                     " · {before} → {after}. The hatched stretches on the timeline are cut; click one to keep it."
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub(super) fn NoisePanel(doc: Doc, loudness: Signal<Measure>) -> Element {
+    let denoise = doc.project.read().denoise;
+    let silent = loudness() == Measure::Silent;
+    rsx! {
+        div { class: "noise",
+            h2 { "Background noise" }
+            label { class: "check",
+                input {
+                    r#type: "checkbox",
+                    checked: denoise.is_some(),
+                    disabled: silent,
+                    onchange: move |e| doc.change(|p| p.denoise = e.checked().then_some(DENOISE_STRENGTH)),
+                }
+                "Reduce background noise"
+            }
+            if silent {
+                p { class: "hint", "This recording has no sound, so there's no noise to take out." }
+            } else if let Some(strength) = denoise {
+                Slider {
+                    edits: doc,
+                    label: "Strength",
+                    value: strength as f64,
+                    min: 0.0,
+                    max: 1.0,
+                    step: 0.05,
+                    show: match strength {
+                        s if s < 0.34 => "Light",
+                        s if s < 0.67 => "Medium",
+                        _ => "Strong",
+                    },
+                    oninput: move |v: f64| doc.live(|p| p.denoise = Some(v as f32)),
+                }
+                p { class: "hint",
+                    "Takes the steady hum, hiss or fan out of your voice, not the music. It applies when you export: the preview plays the sound as recorded."
                 }
             }
         }

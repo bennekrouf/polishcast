@@ -18,7 +18,7 @@ use crate::editor::{
 };
 use crate::{licence, remote, takes};
 use dioxus::prelude::*;
-use polishcast_core::project::{Aspect, Background, SPEEDS};
+use polishcast_core::project::{Aspect, Background, DENOISE_STRENGTH, SPEEDS};
 use polishcast_core::zoom::{self, auto_zoom, AutoZoom, Zoom};
 use polishcast_core::{clips, take, EventLog, Loudness, Project};
 use polishcast_export::{Format, Progress, Settings};
@@ -37,8 +37,8 @@ the person clicked, the cursor is redrawn smooth, and the recording sits on a ba
 corners and a shadow. Each recording is a take, named by its folder; list_takes gives them, newest first. \
 get_take shows a take's zooms, clips and cuts, style and length. set_zooms edits the zooms (or suggests them \
 again from the clicks), set_clips splits the recording and leaves parts out, set_blanks cuts the pauses where \
-nobody speaks, set_style changes the look, the frame's shape and the playback speed. Times are seconds of the \
-recording. export writes an MP4 or a GIF next to the take's folder; the free version exports 10 different \
+nobody speaks, set_style changes the look, the frame's shape, the playback speed and whether background \
+noise is taken out of the voice. Times are seconds of the recording. export writes an MP4 or a GIF next to the take's folder; the free version exports 10 different \
 takes. Recording: start_recording records the screen, a display, a window or a region (list_sources gives \
 their ids), after a countdown, until stop_recording, which saves it as a take with zooms suggested from its \
 clicks; recording_status says what is being recorded, cancel_recording throws it away. The menu bar shows the \
@@ -149,7 +149,7 @@ fn tools() -> Value {
         {
             "name": "get_take",
             "description": "One take in full: its zooms, its clips (and which are left out), its blank cutting, \
-                            its style, speed and frame shape, and how many clicks were recorded.",
+                            its style, speed and frame shape, its noise reduction, and how many clicks were recorded.",
             "inputSchema": { "type": "object", "properties": { "take": take_arg }, "required": ["take"] },
         },
         {
@@ -216,7 +216,8 @@ fn tools() -> Value {
         },
         {
             "name": "set_style",
-            "description": "Changes the look. Only the fields given change.",
+            "description": "Changes the look, the playback speed and whether background noise is taken out \
+                            of the voice. Only the fields given change.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -232,6 +233,8 @@ fn tools() -> Value {
                     "click_effect": { "type": "boolean" },
                     "hide_idle_cursor": { "type": "boolean" },
                     "speed": { "type": "number", "enum": SPEEDS },
+                    "reduce_noise": { "type": "boolean", "description": "Takes steady background noise (a fan, hum, room hiss) out of the voice at export, never out of the music." },
+                    "noise_strength": { "type": "number", "minimum": 0, "maximum": 1, "description": "How strongly, from 0 (lightly) to 1. Default 0.5; giving it turns reduce_noise on." },
                 },
                 "required": ["take"],
             },
@@ -473,6 +476,7 @@ fn describe(t: &Take, p: &Project) -> Value {
         "clips": clip_list,
         "blank_cutting": blanks,
         "speed": p.speed(),
+        "noise_reduction": p.denoise.map(round32),
         "music_pieces": p.music.len(),
         "style": {
             "background": background,
@@ -703,6 +707,12 @@ fn set_style(args: &Value) -> Result<Value, String> {
                 return Err(format!("speed is one of {SPEEDS:?}"));
             }
             p.speed = v;
+        }
+        if let Some(on) = args["reduce_noise"].as_bool() {
+            p.denoise = on.then(|| p.denoise.unwrap_or(DENOISE_STRENGTH));
+        }
+        if let Some(v) = number("noise_strength") {
+            p.denoise = Some((v as f32).clamp(0.0, 1.0));
         }
         Ok(())
     })?;
