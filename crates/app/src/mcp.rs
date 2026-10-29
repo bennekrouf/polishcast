@@ -42,8 +42,8 @@ recording. export writes an MP4 or a GIF next to the take's folder; the free ver
 takes. Recording: start_recording records the screen, a display, a window or a region (list_sources gives \
 their ids), after a countdown, until stop_recording, which saves it as a take with zooms suggested from its \
 clicks; recording_status says what is being recorded, cancel_recording throws it away. The menu bar shows the \
-recording, and the person can stop it there at any time. It must be turned on by the person first, in \
-PolishCast's MCP window; until then the recording tools say how. A demo: start_recording, drive the app being \
+recording, and the person can stop it there at any time. The person can turn recording from here off in \
+PolishCast's MCP window; the recording tools then say how to turn it back on. A demo: start_recording, drive the app being \
 shown, stop_recording, set_zooms with suggest, export.";
 
 /// The client's name, from `initialize`, shown in the menu bar while it records.
@@ -271,8 +271,8 @@ fn tools() -> Value {
                 "Starts recording, as the person would from PolishCast's menu bar: the menu bar counts down, \
                  then shows the recording with Stop Recording. Answers once the first frame is written, with \
                  the recording_id, which is also the take's name. PolishCast's own windows are left out of a \
-                 display's recording. Fails if a recording is already in progress, if the person hasn't turned \
-                 on recording from Claude or Codex in PolishCast, or without the Screen Recording permission \
+                 display's recording. Fails if a recording is already in progress, if the person turned off \
+                 recording from Claude or Codex in PolishCast, or without the Screen Recording permission \
                  (the error says how to grant it); the first recording with the microphone asks for that \
                  permission. Stops by itself after max_duration_secs (default {}).",
                 remote::MAX_DURATION

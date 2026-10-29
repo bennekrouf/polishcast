@@ -135,8 +135,8 @@ checked is PolishCast's, not the MCP client's). The app records as when started 
 same take format, clicks and cursor log, and the menu bar shows `● 0:12 Claude` with
 Stop Recording. A countdown comes first (3 s by default; the menu bar counts it down,
 and Cancel Recording ends it), and `max_duration_secs` (10 min by default, 2 h at most)
-stops it. Nothing is recorded unless **Let Claude or Codex record the screen** is on in
-the MCP window (`allow_mcp_recording` in `settings.json`, off by default). Only
+stops it. Nothing is recorded if **Let Claude or Codex record the screen** is turned off
+in the MCP window (`allow_mcp_recording` in `settings.json`, on by default). Only
 recordings started from MCP can be stopped or cancelled from there; a cancelled one
 goes to the Trash.
 

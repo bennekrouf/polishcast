@@ -13,7 +13,7 @@ pub enum SourceKind {
     Area,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
     pub source: SourceKind,
@@ -26,10 +26,26 @@ pub struct Settings {
     /// Width of the recordings panel in points, as last dragged. `None`: the default.
     #[serde(default)]
     pub sidebar_width: Option<f64>,
-    /// Claude, Codex or another MCP client may start and stop recordings. Off until the person
-    /// turns it on in the MCP window.
-    #[serde(default)]
+    /// Claude, Codex or another MCP client may start and stop recordings. On unless the person
+    /// turned it off in the MCP window.
+    #[serde(default = "on")]
     pub allow_mcp_recording: bool,
+}
+
+fn on() -> bool {
+    true
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            source: SourceKind::default(),
+            system_audio: false,
+            keep_old_app: false,
+            sidebar_width: None,
+            allow_mcp_recording: true,
+        }
+    }
 }
 
 /// The recordings panel's width when it hasn't been dragged, and the range it can be dragged in.
@@ -91,6 +107,7 @@ mod tests {
     fn missing_fields_take_the_defaults() {
         let s: Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(s, Settings::default());
+        assert!(s.allow_mcp_recording, "an MCP client may record until turned off");
         let s: Settings = serde_json::from_str(r#"{"source":"Area","system_audio":true}"#).unwrap();
         assert_eq!((s.source, s.system_audio), (SourceKind::Area, true));
     }

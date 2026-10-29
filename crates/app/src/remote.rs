@@ -7,7 +7,7 @@
 //!
 //! A request is one line of JSON with the token the app wrote beside its port when it started
 //! (readable by this user only), and the answer one line back: `{"ok": …}` or `{"error": …}`.
-//! Nothing is recorded unless the person turned on "Let Claude or Codex record" in the MCP window.
+//! Nothing is recorded if the person turned off "Let Claude or Codex record" in the MCP window.
 //!
 //! What can be checked without the window (the setting, the arguments, the displays, windows
 //! and microphones, the Screen Recording permission) is checked on the connection's thread;
