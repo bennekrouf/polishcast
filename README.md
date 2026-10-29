@@ -123,8 +123,22 @@ and the Claude Code command. The tools: `list_takes`, `get_take`, `set_zooms`,
 `set_clips`, `set_blanks`, `set_style` and `export`, on the editor's own helpers
 (`export_path`, `measure`, `cut_blanks`, `toggle_clip`) and the same free-export count.
 Each tool reads `project.json`, changes it and writes it back at once; an open editor
-checks the file every 2 s and takes a change in as one undo step. Recording isn't
-exposed. `POLISHCAST_LIBRARY` points it at another library, as it does the app.
+checks the file every 2 s and takes a change in as one undo step. `POLISHCAST_LIBRARY`
+points it at another library, as it does the app.
+
+Recording: `list_sources`, `start_recording`, `stop_recording`, `recording_status` and
+`cancel_recording` (`app/src/remote.rs`). The MCP process doesn't record; it asks the
+running app to, over the single-instance port (`instance.port`), with the token the app
+writes beside it at launch (`instance.token`, this user only), and opens the app first
+if it isn't running (through Launch Services on macOS, so the Screen Recording permission
+checked is PolishCast's, not the MCP client's). The app records as when started by hand:
+same take format, clicks and cursor log, and the menu bar shows `● 0:12 Claude` with
+Stop Recording. A countdown comes first (3 s by default; the menu bar counts it down,
+and Cancel Recording ends it), and `max_duration_secs` (10 min by default, 2 h at most)
+stops it. Nothing is recorded unless **Let Claude or Codex record the screen** is on in
+the MCP window (`allow_mcp_recording` in `settings.json`, off by default). Only
+recordings started from MCP can be stopped or cancelled from there; a cancelled one
+goes to the Trash.
 
 ### Permissions
 

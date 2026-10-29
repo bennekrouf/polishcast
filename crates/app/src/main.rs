@@ -12,6 +12,7 @@ mod mcp;
 mod media_server;
 mod old_app;
 mod platform;
+mod remote;
 mod settings;
 mod takes;
 mod views;

@@ -1,6 +1,7 @@
 //! The window and the menu bar item.
 
 use crate::editor::Editor;
+use crate::remote::{self, Asked, Op, Remote};
 use crate::settings::{Settings, SourceKind};
 use crate::{platform, takes};
 use desktop_kit::ui::{use_theme, Banners, Header, ProButton, ProWindow};
@@ -10,9 +11,10 @@ use dioxus::desktop::trayicon::{Icon, TrayIcon, TrayIconBuilder};
 use dioxus::desktop::{use_global_shortcut, use_muda_event_handler, use_wry_event_handler, window};
 use dioxus::prelude::*;
 use polishcast_capture::{Area, Event, Options, Recorder, Source, Take, WindowInfo};
-use polishcast_core::take;
+use polishcast_core::{take, EventLog};
 use polishcast_export::compact::compact;
 use polishcast_export::sound;
+use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -24,6 +26,8 @@ const CSS: &str = include_str!("../assets/style.css");
 #[derive(Clone, Copy, PartialEq)]
 enum Status {
     Idle,
+    /// Asked for by an MCP client: counting down until then.
+    Countdown(Instant),
     /// Waiting for the first frame (and, the first time, for the permission prompt).
     Starting,
     Recording(Instant),
@@ -63,19 +67,30 @@ impl Tray {
         }
         let icon = builder.build().ok();
         let tray = Self { icon, record, show };
-        tray.update(Status::Idle);
+        tray.update(Status::Idle, None);
         tray
     }
 
-    fn update(&self, status: Status) {
+    /// `by`: the MCP client that started the recording, named next to the time.
+    fn update(&self, status: Status, by: Option<&str>) {
+        let after = by.map(|b| format!(" {b}")).unwrap_or_default();
         let (title, item, enabled) = match status {
             Status::Idle => (None, "Start Recording", true),
-            Status::Starting => (Some("…".to_string()), "Stop Recording", true),
-            Status::Recording(since) => (Some(format!("● {}", clock(since.elapsed()))), "Stop Recording", true),
+            Status::Countdown(until) => {
+                let left = until.saturating_duration_since(Instant::now()).as_secs_f64().ceil();
+                (Some(format!("● in {left}{after}")), "Cancel Recording", true)
+            }
+            Status::Starting => (Some(format!("…{after}")), "Stop Recording", true),
+            Status::Recording(since) => (Some(format!("● {}{after}", clock(since.elapsed()))), "Stop Recording", true),
             Status::Saving => (Some("saving".to_string()), "Saving…", false),
+        };
+        let tip = match (status, by) {
+            (Status::Idle, _) | (_, None) => "PolishCast".to_string(),
+            (_, Some(b)) => format!("PolishCast: recording, started from {b}. Stop Recording stops it."),
         };
         if let Some(icon) = &self.icon {
             icon.set_title(title);
+            let _ = icon.set_tooltip(Some(tip));
         }
         self.record.set_text(item);
         self.record.set_enabled(enabled);
@@ -129,7 +144,10 @@ pub fn App() -> Element {
         (tx, Rc::new(rx))
     });
     // What to record, and with which sound; kept for next time.
-    let mut settings = use_signal(Settings::load);
+    // Shared with the MCP window, which turns recording from a client on and off.
+    let mut settings = use_context_provider(|| Signal::new(Settings::load()));
+    // A recording an MCP client asked for, and how the last one ended.
+    let mut remote = use_signal(Remote::default);
     use_hook(move || {
         if !settings.peek().keep_old_app {
             old_app.set(crate::old_app::find());
@@ -167,21 +185,23 @@ pub fn App() -> Element {
     // Why the last recording was stopped for the user, until the next one starts.
     let mut auto_stopped = use_signal(|| Option::<String>::None);
 
-    let start = {
+    let begin = {
         let recorder = recorder.clone();
-        use_callback(move |(source, clicked): (Source, bool)| match takes::new_dir() {
-            Ok(dir) => {
-                error.set(None);
-                let system_audio = settings.peek().system_audio;
-                let options = Options { source, system_audio, clicked, ..Options::default() };
-                recording_dir.set(Some(dir.clone()));
-                auto_stopped.set(None);
-                recorder.start(dir, options);
-                status.set(Status::Starting);
-            }
-            Err(e) => error.set(Some(format!("Can't create the take's folder: {e}"))),
+        use_callback(move |(dir, options): (PathBuf, Options)| {
+            error.set(None);
+            recording_dir.set(Some(dir.clone()));
+            auto_stopped.set(None);
+            recorder.start(dir, options);
+            status.set(Status::Starting);
         })
     };
+    let start = use_callback(move |(source, clicked): (Source, bool)| match takes::new_dir() {
+        Ok(dir) => {
+            let system_audio = settings.peek().system_audio;
+            begin((dir, Options { source, system_audio, clicked, ..Options::default() }));
+        }
+        Err(e) => error.set(Some(format!("Can't create the take's folder: {e}"))),
+    });
 
     let toggle = {
         let recorder = recorder.clone();
@@ -204,7 +224,18 @@ pub fn App() -> Element {
                     crate::area_picker::open(area_tx.clone());
                 }
             },
+            // Asked for by a client and not started yet: nothing was recorded.
+            Status::Countdown(_) => {
+                if let Some(mut a) = remote.write().current.take() {
+                    a.reply_started(Err("The person cancelled the recording during the countdown.".into()));
+                    let _ = std::fs::remove_dir(&a.dir);
+                }
+                status.set(Status::Idle);
+            }
             Status::Starting | Status::Recording(_) => {
+                if let Some(a) = remote.write().current.as_mut() {
+                    a.stopped_by.get_or_insert("the person, from PolishCast");
+                }
                 if clicked {
                     recorder.stop_clicked();
                 } else {
@@ -265,10 +296,27 @@ pub fn App() -> Element {
                 let (mixed_tx, mixed_rx) = mpsc::channel::<(Take, Option<String>)>();
                 // A finished take: its project, then shrinking it in the background.
                 let mut saved = move |t: Take| {
-                    if let Err(e) = takes::create_project(&t) {
-                        error.set(Some(format!("Can't save the project: {e}")));
-                    }
+                    let project = match takes::create_project(&t) {
+                        Ok(p) => Some(p),
+                        Err(e) => {
+                            error.set(Some(format!("Can't save the project: {e}")));
+                            None
+                        }
+                    };
                     status.set(Status::Idle);
+                    // A client's recording: its answer, or the Trash if it was cancelled.
+                    let asked = remote.write().current.take_if(|a| a.dir == t.dir);
+                    if let Some(mut a) = asked {
+                        if a.cancel {
+                            let _ = takes::move_to_trash(&t.dir);
+                            a.reply_saved(&Ok(json!({ "cancelled": true, "recording_id": a.id })));
+                            library.set(takes::list());
+                            return;
+                        }
+                        let result = Ok(finished(&a, &t, project.as_ref()));
+                        a.reply_saved(&result);
+                        remote.write().last = Some((a.id, result));
+                    }
                     library.set(takes::list());
                     if t.compact {
                         compacting.write().insert(t.dir.clone());
@@ -302,9 +350,40 @@ pub fn App() -> Element {
                         let free = dir.as_deref().and_then(crate::limits::free_space);
                         if let Some(reason) = crate::limits::reason_to_stop(since.elapsed(), size, free) {
                             auto_stopped.set(Some(reason));
+                            if let Some(a) = remote.write().current.as_mut() {
+                                a.stopped_by.get_or_insert("PolishCast's own limit on length, size or free disk space");
+                            }
                             recorder.stop();
                             status.set(Status::Saving);
                         }
+                    }
+                    // A client's recording: past its countdown, it starts; past its length, it stops.
+                    if let Status::Countdown(until) = current {
+                        if Instant::now() >= until {
+                            let next =
+                                remote.write().current.as_mut().and_then(|a| Some((a.dir.clone(), a.options.take()?)));
+                            match next {
+                                Some(next) => begin(next),
+                                None => status.set(Status::Idle),
+                            }
+                        }
+                    }
+                    if let Status::Recording(since) = current {
+                        let max = remote.peek().current.as_ref().map(|a| (a.max, a.client.clone()));
+                        if let Some((max, client)) = max.filter(|(max, _)| since.elapsed() >= *max) {
+                            auto_stopped.set(Some(format!(
+                                "The recording was stopped after {} s, the length {client} asked for.",
+                                max.as_secs()
+                            )));
+                            if let Some(a) = remote.write().current.as_mut() {
+                                a.stopped_by.get_or_insert("max_duration_secs");
+                            }
+                            recorder.stop();
+                            status.set(Status::Saving);
+                        }
+                    }
+                    for request in remote::take_requests() {
+                        answer(request, status, *picking.peek(), remote, settings, recording_dir, &recorder);
                     }
                     while let Ok(area) = area_rx.try_recv() {
                         picking.set(false);
@@ -316,10 +395,16 @@ pub fn App() -> Element {
                     while let Some(event) = recorder.try_event() {
                         match event {
                             // Unless Stop was already pressed while it was starting.
-                            Event::Started if *status.peek() == Status::Starting => {
-                                status.set(Status::Recording(Instant::now()))
+                            Event::Started => {
+                                if *status.peek() == Status::Starting {
+                                    status.set(Status::Recording(Instant::now()));
+                                }
+                                if let Some(a) = remote.write().current.as_mut() {
+                                    a.started_at = Some(chrono::Local::now());
+                                    let started = started(a);
+                                    a.reply_started(Ok(started));
+                                }
                             }
-                            Event::Started => {}
                             // The sound apps played, recorded apart from one window, goes in
                             // before the take opens: its pauses are measured once, from the file.
                             Event::Finished(t) if t.sound.is_some() => {
@@ -333,6 +418,14 @@ pub fn App() -> Element {
                             }
                             Event::Finished(t) => saved(t),
                             Event::Failed(e) => {
+                                let asked = remote.write().current.take();
+                                if let Some(mut a) = asked {
+                                    let failed = Err(e.clone());
+                                    a.reply_started(failed.clone());
+                                    a.reply_saved(&failed);
+                                    let _ = std::fs::remove_dir(&a.dir);
+                                    remote.write().last = Some((a.id, failed));
+                                }
                                 error.set(Some(e));
                                 status.set(Status::Idle);
                             }
@@ -349,7 +442,8 @@ pub fn App() -> Element {
                         notice.set(result.err());
                         library.set(takes::list());
                     }
-                    tray.update(*status.peek());
+                    let by = remote.peek().current.as_ref().map(|a| a.client.clone());
+                    tray.update(*status.peek(), by.as_deref());
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             }
@@ -358,10 +452,11 @@ pub fn App() -> Element {
 
     let label = match status() {
         Status::Idle => "Record",
+        Status::Countdown(_) => "Cancel",
         Status::Starting | Status::Recording(_) => "Stop",
         Status::Saving => "Saving…",
     };
-    let recording = matches!(status(), Status::Starting | Status::Recording(_));
+    let recording = matches!(status(), Status::Countdown(_) | Status::Starting | Status::Recording(_));
 
     rsx! {
         style { {CSS} }
@@ -593,6 +688,190 @@ pub fn App() -> Element {
                     Editor { key: "{dir.display()}-{compacting.read().contains(&dir)}", dir }
                 } else {
                     p { class: "empty pad", "Record something to start editing." }
+                }
+            }
+        }
+    }
+}
+
+fn folder_name(dir: &std::path::Path) -> String {
+    dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// start_recording's answer, once the first frame is written.
+fn started(a: &Asked) -> Value {
+    json!({
+        "recording_id": a.id,
+        "take": a.id,
+        "started_at": a.started_at.map(|t| t.to_rfc3339()),
+        "source": a.source_label,
+        "max_duration_secs": a.max.as_secs(),
+    })
+}
+
+/// stop_recording's answer, once the take is saved.
+fn finished(a: &Asked, t: &Take, project: Option<&polishcast_core::Project>) -> Value {
+    let events: EventLog =
+        std::fs::read(t.dir.join(take::EVENTS)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    json!({
+        "recording_id": a.id,
+        "take": a.id,
+        "folder": t.dir,
+        "recording_secs": (t.duration * 100.0).round() / 100.0,
+        "clicks": events.clicks.len(),
+        "zooms_suggested": project.map_or(0, |p| p.zooms.len()),
+        "stopped_by": a.stopped_by.unwrap_or("the client"),
+    })
+}
+
+/// Answers a request from an MCP client (`remote`): starts, stops or cancels its recording, or
+/// says what's being recorded.
+fn answer(
+    request: remote::Request,
+    mut status: Signal<Status>,
+    picking: bool,
+    mut remote: Signal<Remote>,
+    settings: Signal<Settings>,
+    recording_dir: Signal<Option<PathBuf>>,
+    recorder: &Recorder,
+) {
+    let remote::Request { op, client, reply } = request;
+    let current = *status.peek();
+    let by_person = remote.peek().current.is_none() && (current != Status::Idle || picking);
+    let in_progress = {
+        let id = remote.peek().current.as_ref().map(|a| a.id.clone());
+        match id {
+            Some(id) => {
+                format!("A recording is already in progress ({id}). stop_recording or cancel_recording ends it.")
+            }
+            None => "The person is recording, or choosing what to record, from PolishCast. They stop it from the \
+                     menu bar icon; it can't be stopped from here."
+                .into(),
+        }
+    };
+    let cancel = matches!(op, Op::Cancel { .. });
+    match op {
+        Op::Status => {
+            let state = match current {
+                Status::Idle if picking => "choosing_area",
+                Status::Idle => "idle",
+                Status::Countdown(_) => "counting_down",
+                Status::Starting => "starting",
+                Status::Recording(_) => "recording",
+                Status::Saving => "saving",
+            };
+            let mut v = json!({ "state": state, "recording_allowed": Settings::load().allow_mcp_recording });
+            if let Some(a) = remote.peek().current.as_ref() {
+                v["recording_id"] = json!(a.id);
+                v["started_by"] = json!(a.client);
+                v["source"] = a.source_label.clone();
+                v["max_duration_secs"] = json!(a.max.as_secs());
+                v["started_at"] = json!(a.started_at.map(|t| t.to_rfc3339()));
+            } else if by_person {
+                v["recording_id"] = json!(recording_dir.peek().as_deref().map(folder_name));
+                v["started_by"] = json!("the person");
+                v["source"] = json!({ "kind": match settings.peek().source {
+                    SourceKind::Screen => "display",
+                    SourceKind::Window => "window",
+                    SourceKind::Area => "region",
+                } });
+            }
+            match current {
+                Status::Countdown(until) => {
+                    v["countdown_left_secs"] =
+                        json!(until.saturating_duration_since(Instant::now()).as_secs_f64().ceil())
+                }
+                Status::Recording(since) => v["elapsed_secs"] = json!(since.elapsed().as_secs()),
+                _ => {}
+            }
+            if let Some((id, result)) = &remote.peek().last {
+                v["last_recording"] = match result {
+                    Ok(done) => done.clone(),
+                    Err(e) => json!({ "recording_id": id, "failed": e }),
+                };
+            }
+            let _ = reply.send(Ok(v));
+        }
+        Op::Start(_) if current != Status::Idle || picking => {
+            let _ = reply.send(Err(in_progress));
+        }
+        Op::Start(s) => {
+            let dir = match &s.name {
+                Some(name) => takes::new_named_dir(name),
+                None => takes::new_dir(),
+            };
+            let dir = match dir {
+                Ok(dir) => dir,
+                Err(e) => {
+                    let _ = reply.send(Err(format!("Can't create the take's folder: {e}")));
+                    return;
+                }
+            };
+            let system_audio = s.system_audio.unwrap_or(settings.peek().system_audio);
+            let options = Options {
+                source: s.source,
+                microphone: s.microphone,
+                microphone_device: s.microphone_device,
+                system_audio,
+                ..Options::default()
+            };
+            remote.write().current = Some(Asked {
+                id: folder_name(&dir),
+                dir,
+                client: remote::client_label(&client),
+                source_label: s.source_label,
+                max: s.max,
+                options: Some(options),
+                started_at: None,
+                on_started: Some(reply),
+                on_saved: Vec::new(),
+                stopped_by: None,
+                cancel: false,
+            });
+            // The loop starts it once the countdown is over, the next tick if there is none.
+            status.set(Status::Countdown(Instant::now() + s.countdown));
+        }
+        Op::Stop { id } | Op::Cancel { id } => {
+            let mut r = remote.write();
+            let Some(a) = r.current.as_mut().filter(|a| a.is(&id)) else {
+                let answer = match (&r.current, &r.last) {
+                    (Some(a), _) => {
+                        Err(format!("no recording {}: the one in progress is {}", id.unwrap_or_default(), a.id))
+                    }
+                    (None, _) if by_person => Err(in_progress.clone()),
+                    (None, Some((last, result))) if !cancel && id.as_ref().is_none_or(|i| i == last) => result.clone(),
+                    (None, Some((last, _))) if cancel && id.as_ref().is_none_or(|i| i == last) => {
+                        Err(format!("{last} is already saved: it can't be cancelled any more"))
+                    }
+                    _ => Err("No recording is in progress.".into()),
+                };
+                let _ = reply.send(answer);
+                return;
+            };
+            match current {
+                // Nothing recorded yet: stopping is cancelling.
+                Status::Countdown(_) | Status::Idle => {
+                    if let Some(mut a) = r.current.take() {
+                        a.reply_started(Err("The recording was cancelled during the countdown.".into()));
+                        let _ = std::fs::remove_dir(&a.dir);
+                        let _ = reply.send(Ok(json!({
+                            "cancelled": true,
+                            "recording_id": a.id,
+                            "note": "Stopped during the countdown: nothing was recorded.",
+                        })));
+                    }
+                    status.set(Status::Idle);
+                }
+                Status::Starting | Status::Recording(_) => {
+                    a.cancel |= cancel;
+                    a.stopped_by.get_or_insert(if cancel { "cancel_recording" } else { "stop_recording" });
+                    a.on_saved.push(reply);
+                    recorder.stop();
+                    status.set(Status::Saving);
+                }
+                Status::Saving => {
+                    a.cancel |= cancel;
+                    a.on_saved.push(reply);
                 }
             }
         }

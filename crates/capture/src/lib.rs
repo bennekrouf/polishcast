@@ -39,6 +39,8 @@ pub enum Source {
     /// The display the pointer is on.
     #[default]
     Display,
+    /// One display, by its id from [`displays`].
+    Screen(u32),
     /// One window, by its id from [`windows`], even when other windows cover it.
     Window(u32),
     /// A rectangle of the screen, in global points (origin at the main display's top-left).
@@ -64,6 +66,28 @@ pub struct WindowInfo {
     pub on_screen: bool,
 }
 
+/// A display that can be recorded.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DisplayInfo {
+    pub id: u32,
+    /// Where it is and how big, in global points (origin at the main display's top-left).
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+    /// The main display, the one with the menu bar.
+    pub main: bool,
+}
+
+/// A microphone that can be recorded.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Microphone {
+    pub id: String,
+    pub name: String,
+    /// The one the system uses when none is chosen.
+    pub default: bool,
+}
+
 /// Where the pointer is, in global points (origin at the main display's top-left).
 pub fn pointer_location() -> Option<(f64, f64)> {
     #[cfg(any(target_os = "macos", windows))]
@@ -87,6 +111,32 @@ pub fn windows() -> Vec<WindowInfo> {
     Vec::new()
 }
 
+/// The displays that can be recorded one by one, main first. Blocks like [`windows`]. Empty
+/// where a display can't be chosen.
+pub fn displays() -> Vec<DisplayInfo> {
+    #[cfg(target_os = "macos")]
+    return mac::displays();
+    #[cfg(not(target_os = "macos"))]
+    Vec::new()
+}
+
+/// The microphones that can be chosen. Empty where only the system's own can be recorded.
+pub fn microphones() -> Vec<Microphone> {
+    #[cfg(target_os = "macos")]
+    return mac::microphones();
+    #[cfg(not(target_os = "macos"))]
+    Vec::new()
+}
+
+/// Whether the Screen Recording permission is granted to this process, without asking for it;
+/// `None` where there is no such permission to check.
+pub fn screen_recording_allowed() -> Option<bool> {
+    #[cfg(target_os = "macos")]
+    return Some(mac::screen_recording_allowed());
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
 #[derive(Clone, Debug)]
 pub struct Options {
     pub source: Source,
@@ -95,6 +145,8 @@ pub struct Options {
     /// Record at most this many pixels wide (the display's full resolution if smaller).
     pub max_width: Option<u32>,
     pub microphone: bool,
+    /// Which microphone, by its id from [`microphones`]; `None`: the system's.
+    pub microphone_device: Option<String>,
     /// Sound played by apps on the Mac.
     pub system_audio: bool,
     /// Started with a click (a button, the menu bar, an area dragged) rather than the shortcut:
@@ -110,6 +162,7 @@ impl Default for Options {
             codec: Codec::H264,
             max_width: None,
             microphone: true,
+            microphone_device: None,
             system_audio: false,
             clicked: false,
         }

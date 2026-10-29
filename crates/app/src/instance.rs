@@ -5,7 +5,7 @@
 //!
 //! The running instance holds an exclusive lock on a file in the app's data folder and listens
 //! on a local port, written beside it. A later launch finds the lock taken, asks that instance
-//! to show its window, and exits.
+//! to show its window, and exits. `polishcast mcp` asks it to record on the same port (`remote`).
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
@@ -59,18 +59,34 @@ fn listen(port_path: &Path) {
     if std::fs::write(port_path, addr.port().to_string()).is_err() {
         return;
     }
+    // Without a token nothing can be asked to record; showing the window still works.
+    let token = port_path.parent().and_then(crate::remote::write_token).unwrap_or_default();
     std::thread::Builder::new()
         .name("single-instance".into())
         .spawn(move || {
             for stream in listener.incoming().flatten() {
-                let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
-                let mut line = String::new();
-                if BufReader::new(stream).read_line(&mut line).is_ok() && line.trim() == SHOW {
-                    SHOW_REQUESTED.store(true, Ordering::SeqCst);
-                }
+                let token = token.clone();
+                // Its own thread: stopping a recording answers once the take is saved.
+                std::thread::spawn(move || answer(stream, &token));
             }
         })
         .ok();
+}
+
+fn answer(mut stream: TcpStream, token: &str) {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let mut line = String::new();
+    let Ok(clone) = stream.try_clone() else { return };
+    if BufReader::new(clone).read_line(&mut line).is_err() {
+        return;
+    }
+    if line.trim() == SHOW {
+        SHOW_REQUESTED.store(true, Ordering::SeqCst);
+    } else if !token.is_empty() {
+        let mut reply = serde_json::to_vec(&crate::remote::answer(line.trim(), token)).unwrap_or_default();
+        reply.push(b'\n');
+        let _ = stream.write_all(&reply);
+    }
 }
 
 /// Asks the running instance to show its window; whether it got the message.

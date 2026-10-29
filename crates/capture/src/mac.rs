@@ -2,10 +2,11 @@
 //! display, written straight to a file by `SCRecordingOutput` (hardware encoded, macOS 15+).
 
 use crate::pointer::{self, Logger};
-use crate::{Area, Codec, Event, Options, Source, Take, WindowInfo};
+use crate::{Area, Codec, DisplayInfo, Event, Microphone, Options, Source, Take, WindowInfo};
 use anyhow::{anyhow, bail, Context, Result};
 use crossbeam_channel::Sender;
 use polishcast_core::take;
+use screencapturekit::audio_devices::AudioInputDevice;
 use screencapturekit::prelude::*;
 use screencapturekit::recording_output::{
     RecordingCallbacks, SCRecordingOutput, SCRecordingOutputCodec, SCRecordingOutputConfiguration,
@@ -89,6 +90,43 @@ pub fn windows() -> Vec<WindowInfo> {
     out
 }
 
+/// The displays, main first.
+pub fn displays() -> Vec<DisplayInfo> {
+    let Ok(content) = SCShareableContent::get() else {
+        return Vec::new();
+    };
+    let mut out: Vec<DisplayInfo> = content
+        .displays()
+        .iter()
+        .map(|d| {
+            let f = d.frame();
+            DisplayInfo {
+                id: d.display_id(),
+                x: f.origin.x,
+                y: f.origin.y,
+                w: f.size.width,
+                h: f.size.height,
+                main: f.origin.x == 0.0 && f.origin.y == 0.0,
+            }
+        })
+        .collect();
+    out.sort_by_key(|d| !d.main);
+    out
+}
+
+pub fn microphones() -> Vec<Microphone> {
+    AudioInputDevice::list().into_iter().map(|d| Microphone { id: d.id, name: d.name, default: d.is_default }).collect()
+}
+
+pub fn screen_recording_allowed() -> bool {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGPreflightScreenCaptureAccess() -> bool;
+    }
+    // SAFETY: takes nothing, only reads the permission; never shows a prompt.
+    unsafe { CGPreflightScreenCaptureAccess() }
+}
+
 /// How long ScreenCaptureKit gets to finish writing the file after the recording stops.
 const FINALIZING: Duration = Duration::from_secs(60);
 
@@ -155,6 +193,11 @@ impl Active {
                 let display = display_at(pointer::location())?;
                 (display_filter(display).map_err(sc("Content filter"))?, display.frame(), None)
             }
+            Source::Screen(id) => {
+                let display =
+                    displays.iter().find(|d| d.display_id() == id).context("That display isn't connected any more.")?;
+                (display_filter(display).map_err(sc("Content filter"))?, display.frame(), None)
+            }
             Source::Window(id) => {
                 let windows = content.windows();
                 let window = windows
@@ -193,12 +236,15 @@ impl Active {
         // A window's filter only hears that window's app, so the sound every app plays is
         // recorded apart, from the display, and mixed in afterwards.
         let sound_apart = options.system_audio && matches!(options.source, Source::Window(_));
-        let config = config
+        let mut config = config
             .with_fps(options.fps)
             .with_shows_cursor(false)
             .with_captures_audio(options.system_audio && !sound_apart)
             .with_captures_microphone(options.microphone)
             .map_err(sc("Microphone"))?;
+        if let (true, Some(id)) = (options.microphone, &options.microphone_device) {
+            config.set_microphone_capture_device_id(id).map_err(sc("Microphone"))?;
+        }
 
         let codec = match options.codec {
             Codec::H264 => SCRecordingOutputCodec::H264,

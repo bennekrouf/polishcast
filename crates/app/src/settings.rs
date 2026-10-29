@@ -1,5 +1,5 @@
 //! What the app remembers between launches: what to record, whether the Mac's sound goes in
-//! with the microphone, and how wide the recordings panel is.
+//! with the microphone, how wide the recordings panel is, and whether an MCP client may record.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -26,6 +26,10 @@ pub struct Settings {
     /// Width of the recordings panel in points, as last dragged. `None`: the default.
     #[serde(default)]
     pub sidebar_width: Option<f64>,
+    /// Claude, Codex or another MCP client may start and stop recordings. Off until the person
+    /// turns it on in the MCP window.
+    #[serde(default)]
+    pub allow_mcp_recording: bool,
 }
 
 /// The recordings panel's width when it hasn't been dragged, and the range it can be dragged in.
