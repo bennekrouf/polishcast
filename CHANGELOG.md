@@ -24,8 +24,8 @@ user sees in the update prompt should all be accounted for.
   make a whole demo video with nobody touching the menu bar: start recording,
   use the app being shown, stop, add the zooms and export. They can record the
   whole screen, one display, one window or a region, with or without the
-  microphone and the Mac's sound. It's off until you turn on "Let Claude or
-  Codex record the screen" in the MCP window.
+  microphone and the Mac's sound. To keep them from recording, turn off "Let
+  Claude or Codex record the screen" in the MCP window.
 - A recording started this way counts down in the menu bar first, then shows
   who started it next to the time. Stop Recording there stops it at any time,
   and it stops by itself after 10 minutes unless a longer length was asked for.
