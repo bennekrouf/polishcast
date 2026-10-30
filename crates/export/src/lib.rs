@@ -46,11 +46,13 @@ pub struct Settings {
     /// Pixels along the output's longer side.
     pub long_side: u32,
     pub fps: u32,
+    /// An MP4 without the recording's sound or the music. A GIF never has sound.
+    pub mute: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { format: Format::Mp4, long_side: 1920, fps: 30 }
+        Self { format: Format::Mp4, long_side: 1920, fps: 30, mute: false }
     }
 }
 
@@ -200,9 +202,10 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     let read_fps = fps as f64 / speed;
     let cutting = timeline.parts.len() != 1 || timeline.duration() < scene.project.duration;
     let gif = settings.format == Format::Gif;
-    let tracks = if gif { 0 } else { sound::audio_tracks(&ffmpeg, &screen)? };
+    let silent = gif || settings.mute;
+    let tracks = if silent { 0 } else { sound::audio_tracks(&ffmpeg, &screen)? };
     // Music, placed in video time: inputs after the recording.
-    let music = if gif { Vec::new() } else { scene.project.placed_music() };
+    let music = if silent { Vec::new() } else { scene.project.placed_music() };
     let songs: Vec<PathBuf> = music.iter().map(|m| dir.join(&scene.project.music[m.index].file)).collect();
     if let Some(missing) = songs.iter().find(|s| !s.is_file()) {
         bail!("The music file {} is missing from the take's folder.", missing.display());
@@ -267,6 +270,8 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
                     .into_iter()
                     .chain(["-map".into(), "[aout]".into()])
                     .collect::<Vec<String>>()
+            } else if silent {
+                ["-map", "0:v:0"].map(String::from).to_vec()
             } else {
                 ["-map", "0:v:0", "-map", "1:a:0?"].map(String::from).to_vec()
             })

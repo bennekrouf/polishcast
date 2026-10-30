@@ -16,6 +16,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- Claude and Codex can export an MP4 without sound. Ask for a muted export and
+  the video leaves out both your recording's sound and the music, with
+  "muted" in the file's name. A GIF stays silent as before.
+
 ## [0.1.37] - 2026-10-29
 
 ### Changed

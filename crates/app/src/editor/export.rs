@@ -30,6 +30,9 @@ pub(crate) fn export_name(
     }
     parts.push(format!("{speed}x"));
     parts.push(if blanks_cut { "blanks cut" } else { "with blanks" }.into());
+    if settings.mute {
+        parts.push("muted".into());
+    }
     format!("{} (exported {})", parts.join(" "), at.format("%Y-%m-%d %H.%M.%S"))
 }
 
@@ -162,7 +165,7 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
                                 // Each format starts from its own sensible size and rate.
                                 settings.set(match format {
                                     Format::Mp4 => Settings::default(),
-                                    Format::Gif => Settings { format, long_side: 960, fps: 15 },
+                                    Format::Gif => Settings { format, long_side: 960, fps: 15, mute: false },
                                 });
                                 state.set(Export::Idle);
                             }
