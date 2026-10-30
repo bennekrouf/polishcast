@@ -1,0 +1,171 @@
+{
+  "skill_name": "polishcast",
+  "description": "How to make polished screen-recording videos with PolishCast, the desktop app that adds automatic zoom on clicks, a smooth cursor, a background, padding and rounded corners, and exports MP4 or GIF. Read this skill before calling any polishcast tool (list_takes, get_take, set_zooms, set_clips, set_blanks, set_style, export, list_sources, start_recording, stop_recording), because it has the recording safety rules, good style defaults for demos and social clips, and how to report a take. Use it whenever the user mentions PolishCast or a take, or asks to record a demo, walkthrough or bug repro of an app on screen, change a recording's zooms, trim it, cut its pauses, change its background, aspect ratio, cursor or speed, remove background noise, or export it as MP4 or GIF.",
+  "results": [
+    {
+      "query": "record a 1 minute demo of the new export button in my app's window, then make it 16:9 with a dark background and export mp4",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "the zoom in my last take jumps way too early at the start, around 0:04, can you push it to 0:06 and make it less aggressive",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "cut the long pauses where I'm not talking from yesterday's recording and export it as a gif for the readme",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "make the last take vertical 9:16 for linkedin, bigger cursor, and speed it up 1.5x",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "there's fan noise in my voice on the walkthrough take, can polishcast take it out before I export",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "trim the first 8 seconds and everything after 2:10 from the onboarding recording",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "record my screen while you click through the signup flow in the browser so I get a bug repro video for the ticket",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "export the 'pricing page' take at 1280 wide, 24fps, no sound",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "list my recent takes and tell me which ones I haven't exported yet",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "suggest the zooms again from the clicks on take 'release-0.9', I messed them up by hand",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "convert this mov to mp4 with ffmpeg and keep the audio",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "what are good OBS settings for recording a 4k screen tutorial at 60fps",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "take a screenshot of the settings page in my app",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "write a script for a 60 second product demo video of my invoicing app",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "my screen recording permission keeps getting reset on macOS sequoia for zoom.us",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "add subtitles to this youtube video I downloaded",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "compress this 300MB mp4 so I can attach it to an email",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "how do I make a gif from a video on mac without installing anything",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "edit my podcast audio to remove ums and long pauses",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "compare screen studio, loom and camtasia for making product demos",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    }
+  ],
+  "summary": {
+    "total": 20,
+    "passed": 13,
+    "failed": 7
+  }
+}
