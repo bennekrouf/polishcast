@@ -242,9 +242,9 @@ fn tools() -> Value {
         {
             "name": "export",
             "description": format!(
-                "Writes the video next to the take's folder, as an MP4 (with sound) or a GIF (silent, looping), \
-                 named after the take, its size, frame rate, shape, speed, whether the blanks are cut and \
-                 the time of the export, so it never replaces an earlier one; name sets another name. Takes \
+                "Writes the video next to the take's folder, as an MP4 (with sound, unless mute) or a GIF \
+                 (silent, looping), named after the take, its size, frame rate, shape, speed, whether the \
+                 blanks are cut, whether it is muted and the time of the export, so it never replaces an earlier one; name sets another name. Takes \
                  about as long as the video on a recent Mac; ffmpeg is downloaded first if none is installed. Sizes are pixels along the longer side: {mp4_sizes:?} for MP4, \
                  {gif_sizes:?} for GIF. The free version exports {} different takes.",
                 polishcast_core::license::FREE_EXPORTS
@@ -257,6 +257,7 @@ fn tools() -> Value {
                     "size": { "type": "integer", "description": "Default 1920 for MP4, 960 for GIF." },
                     "fps": { "type": "integer", "description": format!("{FRAME_RATES:?} for MP4 (default 30), {GIF_FRAME_RATES:?} for GIF (default 15).") },
                     "name": { "type": "string", "description": "The file's name, without extension. A file of that name is replaced." },
+                    "mute": { "type": "boolean", "description": "For MP4: leaves out the recording's sound and the music. Default false." },
                 },
                 "required": ["take", "format"],
             },
@@ -723,9 +724,12 @@ fn export(args: &Value) -> Result<Value, String> {
     let t = Take::from(args)?;
     let (format, sizes, rates, defaults) = match args["format"].as_str() {
         Some("mp4") => (Format::Mp4, RESOLUTIONS, FRAME_RATES, Settings::default()),
-        Some("gif") => {
-            (Format::Gif, GIF_SIZES, GIF_FRAME_RATES, Settings { format: Format::Gif, long_side: 960, fps: 15 })
-        }
+        Some("gif") => (
+            Format::Gif,
+            GIF_SIZES,
+            GIF_FRAME_RATES,
+            Settings { format: Format::Gif, long_side: 960, fps: 15, mute: false },
+        ),
         _ => return Err("format is mp4 or gif".into()),
     };
     let long_side = args["size"].as_u64().map_or(defaults.long_side, |n| n as u32);
@@ -746,7 +750,11 @@ fn export(args: &Value) -> Result<Value, String> {
             licence::buy_url()
         ));
     }
-    let settings = Settings { format, long_side, fps };
+    let mute = args["mute"].as_bool().unwrap_or(false);
+    if mute && format == Format::Gif {
+        return Err("mute is for MP4: a GIF never has sound".into());
+    }
+    let settings = Settings { format, long_side, fps, mute };
     let file_name = match args["name"].as_str() {
         Some(typed) => clean_export_name(typed, format).ok_or("name is empty")?,
         None => {

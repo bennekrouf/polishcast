@@ -58,8 +58,14 @@ fn exports_video_with_sound() {
 
     let out = dir.join("out.mp4");
     let progress = Progress::default();
-    export(&dir, &out, Settings { format: Format::Mp4, long_side: 640, fps: 30 }, &progress, &AtomicBool::new(false))
-        .unwrap();
+    export(
+        &dir,
+        &out,
+        Settings { format: Format::Mp4, long_side: 640, fps: 30, mute: false },
+        &progress,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     assert_eq!(progress.fraction(), 1.0);
 
     if ffprobe.is_file() {
@@ -155,7 +161,7 @@ fn blanks_are_cut_from_picture_and_sound() {
     export(
         &dir,
         &out,
-        Settings { format: Format::Mp4, long_side: 320, fps: 30 },
+        Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
         &Progress::default(),
         &AtomicBool::new(false),
     )
@@ -207,7 +213,7 @@ fn a_faster_speed_shortens_picture_and_sound() {
         export(
             &dir,
             &out,
-            Settings { format: Format::Mp4, long_side: 320, fps: 30 },
+            Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
             &progress,
             &AtomicBool::new(false),
         )
@@ -232,6 +238,38 @@ fn a_faster_speed_shortens_picture_and_sound() {
 }
 
 #[test]
+fn a_muted_mp4_has_no_sound() {
+    let Some(ffmpeg) = ffmpeg() else {
+        return;
+    };
+    let ffprobe = ffprobe(&ffmpeg);
+    if !ffprobe.is_file() {
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("polishcast-mute-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let status = Command::new(&ffmpeg)
+        .args(["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x200:rate=30:duration=3"])
+        .args(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3"])
+        .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"])
+        .arg(dir.join(take::SCREEN))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    Project::new(3.0, 320, 200, &EventLog::default()).save(&dir.join(take::PROJECT)).unwrap();
+
+    for mute in [false, true] {
+        let out = dir.join(format!("out-{mute}.mp4"));
+        let settings = Settings { format: Format::Mp4, long_side: 320, fps: 30, mute };
+        export(&dir, &out, settings, &Progress::default(), &AtomicBool::new(false)).unwrap();
+        let streams = probe(&ffprobe, &out, "stream=codec_type");
+        let expected = if mute { "video" } else { "video\naudio" };
+        assert_eq!(streams.trim(), expected, "mute: {mute}");
+    }
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn exports_a_looping_gif() {
     let Some(ffmpeg) = ffmpeg() else {
         return;
@@ -241,7 +279,7 @@ fn exports_a_looping_gif() {
     std::fs::create_dir_all(&dir).unwrap();
     make_take(&dir, &ffmpeg);
     let out = dir.join("out.gif");
-    let settings = Settings { format: Format::Gif, long_side: 320, fps: 10 };
+    let settings = Settings { format: Format::Gif, long_side: 320, fps: 10, mute: false };
     export(&dir, &out, settings, &Progress::default(), &AtomicBool::new(false)).unwrap();
     if ffprobe.is_file() {
         let video = probe(&ffprobe, &out, "stream=codec_name,width,height,nb_read_frames");
@@ -274,7 +312,7 @@ fn a_picture_background_and_a_removed_clip_export() {
     p.save(&dir.join(take::PROJECT)).unwrap();
 
     let out = dir.join("out.mp4");
-    let settings = Settings { format: Format::Mp4, long_side: 640, fps: 30 };
+    let settings = Settings { format: Format::Mp4, long_side: 640, fps: 30, mute: false };
     export(&dir, &out, settings, &Progress::default(), &AtomicBool::new(false)).unwrap();
     if ffprobe.is_file() {
         let duration: f64 = probe(&ffprobe, &out, "format=duration").parse().unwrap();
@@ -331,7 +369,7 @@ fn music_plays_at_its_moments_under_the_voice() {
     export(
         &dir,
         &out,
-        Settings { format: Format::Mp4, long_side: 320, fps: 30 },
+        Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
         &Progress::default(),
         &AtomicBool::new(false),
     )
@@ -383,7 +421,7 @@ fn music_is_lowered_while_the_voice_speaks() {
     export(
         &dir,
         &out,
-        Settings { format: Format::Mp4, long_side: 320, fps: 30 },
+        Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
         &Progress::default(),
         &AtomicBool::new(false),
     )
@@ -440,7 +478,7 @@ fn background_noise_is_taken_out_of_the_voice_but_not_the_music() {
         export(
             &dir,
             &out,
-            Settings { format: Format::Mp4, long_side: 320, fps: 30 },
+            Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
             &Progress::default(),
             &AtomicBool::new(false),
         )
