@@ -1,6 +1,6 @@
 ---
 name: polishcast
-description: Drive PolishCast, the desktop screen recorder that turns recordings into polished videos (automatic zoom on clicks, smooth cursor, background, padding, rounded corners, MP4 or GIF export), through its MCP tools. Use this whenever the user mentions PolishCast, or asks to record a demo, a product walkthrough or a bug reproduction of an app on their screen, to edit a take's zooms, cut pauses or parts of a recording, change its background, aspect ratio or speed, reduce background noise, or export a recording as MP4 or GIF. Also use it when PolishCast's tools are missing and the user wants to connect the app.
+description: How to make polished screen-recording videos with PolishCast, the desktop app that adds automatic zoom on clicks, a smooth cursor, a background, padding and rounded corners, and exports MP4 or GIF. Read this skill before calling any polishcast tool (list_takes, get_take, set_zooms, set_clips, set_blanks, set_style, export, list_sources, start_recording, stop_recording), because it has the recording safety rules, good style defaults for demos and social clips, and how to report a take. Use it whenever the user mentions PolishCast or a take, or asks to record a demo, walkthrough or bug repro of an app on screen, change a recording's zooms, trim it, cut its pauses, change its background, aspect ratio, cursor or speed, remove background noise, or export it as MP4 or GIF.
 ---
 
 # PolishCast
@@ -79,3 +79,18 @@ step, so the user can always undo in the window.
 name. The free version exports 10 different takes; after that, the user needs
 PolishCast Pro. Export uses ffmpeg, which the app fetches itself on first use;
 the first export can take a little longer.
+
+## How to report back
+
+Before recording, one line: what will be recorded (window or screen), the
+maximum length, and that the countdown starts now.
+
+For a take, give its name and length, then:
+
+- **Zooms**: how many, each as `start–end ×scale` in m:ss.
+- **Cuts**: the clips left out and the pauses cut, with the time they save.
+- **Look**: aspect, background, padding, speed, noise reduction.
+- **Length after cuts**, at the chosen speed.
+
+After an export, give the file's full path, its format, size in pixels, frame
+rate and length, and how many free exports remain if the tool says so.
