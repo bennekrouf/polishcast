@@ -44,7 +44,9 @@ their ids), after a countdown, until stop_recording, which saves it as a take wi
 clicks; recording_status says what is being recorded, cancel_recording throws it away. The menu bar shows the \
 recording, and the person can stop it there at any time. The person can turn recording from here off in \
 PolishCast's MCP window; the recording tools then say how to turn it back on. A demo: start_recording, drive the app being \
-shown, stop_recording, set_zooms with suggest, export.";
+shown, stop_recording, set_zooms with suggest, export. \
+Before calling these tools, read the polishcast skill if one is available: it has the confirmation \
+rules, defaults and report layouts that these instructions leave out.";
 
 /// The client's name, from `initialize`, shown in the menu bar while it records.
 static CLIENT: OnceLock<String> = OnceLock::new();
