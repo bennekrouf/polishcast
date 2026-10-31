@@ -1,6 +1,6 @@
 ---
 name: polishcast
-description: How to make polished screen-recording videos with PolishCast, the desktop app that adds automatic zoom on clicks, a smooth cursor, a background, padding and rounded corners, and exports MP4 or GIF. Read this skill before calling any polishcast tool (list_takes, get_take, set_zooms, set_clips, set_blanks, set_style, export, list_sources, start_recording, stop_recording), because it has the recording safety rules, good style defaults for demos and social clips, and how to report a take. Use it whenever the user mentions PolishCast or a take, or asks to record a demo, walkthrough or bug repro of an app on screen, change a recording's zooms, trim it, cut its pauses, change its background, aspect ratio, cursor or speed, remove background noise, or export it as MP4 or GIF.
+description: How to make polished screen-recording videos with PolishCast, the desktop app that adds automatic zoom on clicks, a smooth cursor, a background, padding and rounded corners, and exports MP4 or GIF. Read this skill before calling any polishcast tool (list_takes, get_take, set_zooms, set_clips, set_blanks, set_style, export, transcribe, get_transcript, set_chapters, send_to_publishkit, list_sources, start_recording, stop_recording), because it has the recording safety rules, good style defaults for demos and social clips, and how to report a take. Use it whenever the user mentions PolishCast or a take, or asks to record a demo, walkthrough or bug repro of an app on screen, change a recording's zooms, trim it, cut its pauses, change its background, aspect ratio, cursor or speed, remove background noise, transcribe it, add captions or chapters, export it as MP4 or GIF, or send it to PublishKit for a blog post and social posts.
 ---
 
 # PolishCast
@@ -79,6 +79,20 @@ step, so the user can always undo in the window.
 name. The free version exports 10 different takes; after that, the user needs
 PolishCast Pro. Export uses ffmpeg, which the app fetches itself on first use;
 the first export can take a little longer.
+
+## Transcript, captions and chapters
+
+`transcribe` writes the take's transcript with api0 on the Mayorana licence's
+AI credits: say so before the first one, and that the sound is sent to api0 in
+the region set in PolishCast. It finds chapters too. With the microphone and
+the computer's sound on separate tracks, lines say who speaks (You or Guest).
+`get_transcript` reads it as text, SRT, VTT or YouTube chapters (those three
+in the exported video's time, after cuts and speed). `set_chapters` replaces
+them, finds them again (`detect`) or has api0 title them (`name_with_ai`,
+also on credits). `export` with `captions: files` writes `.srt`, `.vtt` and
+`.chapters.txt` beside the MP4; `burned` also draws the captions into the
+picture. `send_to_publishkit` opens PublishKit's Repurpose with an export that
+has captions; nothing is written there until the user confirms in PublishKit.
 
 ## How to report back
 

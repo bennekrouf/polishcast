@@ -11,7 +11,7 @@ fn the_suggested_name_tells_exports_apart_and_dates_them() {
         export_name(take, Settings::default(), Aspect::Source, 1.0, false, at()),
         "2026-10-03 10.00.12 1080p 30fps 1x with blanks (exported 2026-10-22 15.32.10)"
     );
-    let gif = Settings { format: Format::Gif, long_side: 960, fps: 15, mute: false };
+    let gif = Settings { format: Format::Gif, long_side: 960, fps: 15, mute: false, ..Settings::default() };
     assert_eq!(
         export_name(take, gif, Aspect::Landscape16x9, 1.5, true, at()),
         "2026-10-03 10.00.12 960px 15fps 16x9 1.5x blanks cut (exported 2026-10-22 15.32.10)"

@@ -15,7 +15,7 @@ const RATE: u32 = 16_000;
 
 /// The sound, timed from the start of the recording: the microphone may start a moment after
 /// the picture, and the gap is filled with silence so times line up with the video.
-const ALIGN: &str = "aresample=async=1:first_pts=0";
+pub const ALIGN: &str = "aresample=async=1:first_pts=0";
 
 /// How many sound tracks `file` has: none, one (the microphone, or the Mac's sound), or more
 /// when both were recorded.
@@ -32,7 +32,7 @@ pub fn has_audio(ffmpeg: &Path, file: &Path) -> Result<bool> {
 
 /// The start of a filter chain: input `input`'s sound, its `tracks` tracks aligned and mixed
 /// into one. Further filters follow after a comma.
-fn source(input: u8, tracks: usize) -> String {
+pub fn source(input: u8, tracks: usize) -> String {
     if tracks <= 1 {
         return format!("[{input}:a:0]{ALIGN}");
     }

@@ -15,6 +15,7 @@ mod platform;
 mod remote;
 mod settings;
 mod takes;
+mod transcribing;
 mod views;
 
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder, WindowCloseBehaviour};

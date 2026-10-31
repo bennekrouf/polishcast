@@ -3564,6 +3564,7 @@ dependencies = [
  "polishcast-core",
  "polishcast-export",
  "polishcast-render",
+ "polishcast-transcribe",
  "serde",
  "serde_json",
  "tokio",
@@ -3619,6 +3620,18 @@ dependencies = [
  "polishcast-core",
  "serde",
  "tiny-skia",
+]
+
+[[package]]
+name = "polishcast-transcribe"
+version = "0.1.43"
+dependencies = [
+ "anyhow",
+ "desktop-kit",
+ "polishcast-core",
+ "polishcast-export",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]

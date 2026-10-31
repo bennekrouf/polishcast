@@ -1,0 +1,17 @@
+[package]
+name = "polishcast-transcribe"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[dependencies]
+polishcast-core.workspace = true
+polishcast-export.workspace = true
+desktop-kit.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+# api0's transcription, through the export crate's `http` agent (certificates checked by the OS).
+ureq = "3.4.2"
+
+[lints]
+workspace = true

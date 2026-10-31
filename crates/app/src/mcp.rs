@@ -16,12 +16,12 @@ use crate::editor::{
     clean_export_name, cut_blanks, export_name, export_path, exports_of, measure, toggle_clip, FRAME_RATES,
     GIF_FRAME_RATES, GIF_SIZES, RESOLUTIONS,
 };
-use crate::{licence, remote, takes};
+use crate::{licence, remote, takes, transcribing};
 use dioxus::prelude::*;
 use polishcast_core::project::{Aspect, Background, DENOISE_STRENGTH, SPEEDS};
 use polishcast_core::zoom::{self, auto_zoom, AutoZoom, Zoom};
 use polishcast_core::{clips, take, EventLog, Loudness, Project};
-use polishcast_export::{Format, Progress, Settings};
+use polishcast_export::{Captions, Format, Progress, Settings};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -44,7 +44,10 @@ their ids), after a countdown, until stop_recording, which saves it as a take wi
 clicks; recording_status says what is being recorded, cancel_recording throws it away. The menu bar shows the \
 recording, and the person can stop it there at any time. The person can turn recording from here off in \
 PolishCast's MCP window; the recording tools then say how to turn it back on. A demo: start_recording, drive the app being \
-shown, stop_recording, set_zooms with suggest, export. \
+shown, stop_recording, set_zooms with suggest, export. transcribe writes the take's transcript with api0 on the \
+licence's AI credits and finds its chapters; get_transcript reads it (text, SRT, VTT or chapters), set_chapters \
+changes them; export with captions writes caption files or burns them in; send_to_publishkit opens PublishKit's \
+Repurpose with an exported video and its captions, for a blog draft and social posts. \
 Before calling these tools, read the polishcast skill if one is available: it has the confirmation \
 rules, defaults and report layouts that these instructions leave out.";
 
@@ -273,8 +276,70 @@ fn tools() -> Value {
                     "fps": { "type": "integer", "description": format!("{FRAME_RATES:?} for MP4 (default 30), {GIF_FRAME_RATES:?} for GIF (default 15).") },
                     "name": { "type": "string", "description": "The file's name, without extension. A file of that name is replaced." },
                     "mute": { "type": "boolean", "description": "For MP4: leaves out the recording's sound and the music. Default false." },
+                    "captions": { "type": "string", "enum": ["off", "files", "burned"], "description": "For MP4, from the take's transcript (transcribe first): files writes .srt, .vtt and .chapters.txt beside the video; burned also draws the captions into the picture. Default off." },
                 },
                 "required": ["take", "format"],
+            },
+        },
+        {
+            "name": "transcribe",
+            "description": "Transcribes the take with api0 on the Mayorana licence's AI credits (about a credit per few \
+                            minutes of sound), finds its chapters, and keeps both with the take, replacing an earlier \
+                            transcript. With the microphone and the computer's sound on separate tracks, each line says \
+                            who speaks (You or Guest). Takes a few seconds per minute of recording.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "take": take_arg,
+                    "language": { "type": "string", "description": "A language code like en or fr, when known; default: detected." },
+                },
+                "required": ["take"],
+            },
+        },
+        {
+            "name": "get_transcript",
+            "description": "The take's transcript: as prose (text, the default), as SRT or WebVTT captions in the \
+                            exported video's time (after cuts and speed), or its chapters as a YouTube description lists them.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "take": take_arg,
+                    "format": { "type": "string", "enum": ["text", "srt", "vtt", "chapters"] },
+                },
+                "required": ["take"],
+            },
+        },
+        {
+            "name": "set_chapters",
+            "description": "Replaces the take's chapters (times in seconds of the recording, the first one at its start), \
+                            or finds them again from what is said (detect), or has api0 title them (name_with_ai, on the \
+                            licence's credits). YouTube needs at least 3, each 10 seconds or longer.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "take": take_arg,
+                    "chapters": {
+                        "type": "array",
+                        "items": { "type": "object", "properties": { "start": { "type": "number" }, "title": { "type": "string" } }, "required": ["start", "title"] },
+                    },
+                    "detect": { "type": "boolean" },
+                    "name_with_ai": { "type": "boolean" },
+                },
+                "required": ["take"],
+            },
+        },
+        {
+            "name": "send_to_publishkit",
+            "description": "Opens PublishKit's Repurpose window with an exported video and its captions filled in, for a \
+                            blog draft or outline, clips and social posts in the site's voice. The video must have been \
+                            exported with captions. Nothing is written in PublishKit until the person confirms there.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "take": take_arg,
+                    "file": { "type": "string", "description": "The exported MP4's path; default the take's newest export with captions." },
+                },
+                "required": ["take"],
             },
         },
         {
@@ -363,6 +428,10 @@ fn call(name: &str, args: &Value) -> Result<Value, String> {
         "set_blanks" => set_blanks(args),
         "set_style" => set_style(args),
         "export" => export(args),
+        "transcribe" => transcribe(args),
+        "get_transcript" => get_transcript(args),
+        "set_chapters" => set_chapters(args),
+        "send_to_publishkit" => send_to_publishkit(args),
         "list_sources" => ask("sources", args),
         "start_recording" => ask("start", args),
         "stop_recording" => ask("stop", args),
@@ -743,7 +812,7 @@ fn export(args: &Value) -> Result<Value, String> {
             Format::Gif,
             GIF_SIZES,
             GIF_FRAME_RATES,
-            Settings { format: Format::Gif, long_side: 960, fps: 15, mute: false },
+            Settings { format: Format::Gif, long_side: 960, fps: 15, mute: false, ..Settings::default() },
         ),
         _ => return Err("format is mp4 or gif".into()),
     };
@@ -769,7 +838,17 @@ fn export(args: &Value) -> Result<Value, String> {
     if mute && format == Format::Gif {
         return Err("mute is for MP4: a GIF never has sound".into());
     }
-    let settings = Settings { format, long_side, fps, mute };
+    let captions = match args["captions"].as_str() {
+        None => Captions::Off,
+        Some(key) => Captions::from_key(key).ok_or(format!("captions is off, files or burned, not {key}"))?,
+    };
+    if captions != Captions::Off && format == Format::Gif {
+        return Err("captions are for MP4".into());
+    }
+    if captions != Captions::Off && transcribing::load(&t.dir).is_none() {
+        return Err("the take has no transcript yet: call transcribe first".into());
+    }
+    let settings = Settings { format, long_side, fps, mute, captions };
     let file_name = match args["name"].as_str() {
         Some(typed) => clean_export_name(typed, format).ok_or("name is empty")?,
         None => {
@@ -788,10 +867,98 @@ fn export(args: &Value) -> Result<Value, String> {
         "size_mb": std::fs::metadata(&out).map_or(0.0, |m| (m.len() as f64 / 1e5).round() / 10.0),
         "took_secs": started.elapsed().as_secs(),
     });
+    if captions != Captions::Off {
+        let written: Vec<PathBuf> =
+            polishcast_export::caption_files(&out).into_iter().filter(|f| f.is_file()).collect();
+        v["captions"] = json!(written);
+    }
     if let Some(left) = licence::free_exports_left() {
         v["free_exports_left"] = json!(left);
     }
     Ok(v)
+}
+
+// ── Transcript ───────────────────────────────────────────────────────────────────────────
+
+fn transcribe(args: &Value) -> Result<Value, String> {
+    let t = Take::from(args)?;
+    let started = std::time::Instant::now();
+    let tr = transcribing::transcribe(
+        &t.dir,
+        args["language"].as_str(),
+        &polishcast_transcribe::Progress::default(),
+        &AtomicBool::new(false),
+    )?;
+    Ok(json!({
+        "take": t.name(),
+        "language": tr.language,
+        "lines": tr.segments.len(),
+        "words": tr.text().split_whitespace().count(),
+        "speakers": tr.has_speakers(),
+        "chapters": chapters_json(&tr.chapters),
+        "took_secs": started.elapsed().as_secs(),
+    }))
+}
+
+fn chapters_json(chapters: &[polishcast_core::transcript::Chapter]) -> Value {
+    json!(chapters.iter().map(|c| json!({ "start": round(c.start), "title": c.title })).collect::<Vec<_>>())
+}
+
+fn get_transcript(args: &Value) -> Result<Value, String> {
+    use polishcast_core::transcript;
+    let t = Take::from(args)?;
+    let tr = transcribing::load(&t.dir).ok_or("the take has no transcript yet: call transcribe first")?;
+    let p = t.project()?;
+    let (timeline, speed) = (p.timeline(), p.speed());
+    let text = match args["format"].as_str().unwrap_or("text") {
+        "text" => tr.text(),
+        "srt" => transcript::srt(&tr.in_video(&timeline, speed)),
+        "vtt" => transcript::vtt(&tr.in_video(&timeline, speed)),
+        "chapters" => transcript::youtube_chapters(&tr.chapters_in_video(&timeline, speed)),
+        other => return Err(format!("format is text, srt, vtt or chapters, not {other}")),
+    };
+    Ok(json!({ "take": t.name(), "language": tr.language, "transcript": text }))
+}
+
+fn set_chapters(args: &Value) -> Result<Value, String> {
+    use polishcast_core::transcript::{self, Chapter};
+    let t = Take::from(args)?;
+    let mut tr = transcribing::load(&t.dir).ok_or("the take has no transcript yet: call transcribe first")?;
+    if let Some(given) = args["chapters"].as_array() {
+        let mut chapters = Vec::with_capacity(given.len());
+        for c in given {
+            let start = c["start"].as_f64().ok_or("each chapter has a start, in seconds")?;
+            let title =
+                c["title"].as_str().map(str::trim).filter(|s| !s.is_empty()).ok_or("each chapter has a title")?;
+            chapters.push(Chapter { start: start.max(0.0), title: title.to_string() });
+        }
+        chapters.sort_by(|a, b| a.start.total_cmp(&b.start));
+        if let Some(first) = chapters.first_mut() {
+            first.start = 0.0;
+        }
+        tr.chapters = chapters;
+    } else if args["detect"].as_bool().unwrap_or(false) {
+        tr.chapters = transcript::detect_chapters(&tr.segments, t.project()?.duration);
+    }
+    tr.save(&transcribing::path(&t.dir)).map_err(|e| format!("can't save the transcript: {e}"))?;
+    if args["name_with_ai"].as_bool().unwrap_or(false) {
+        tr.chapters = transcribing::name_chapters(&t.dir)?;
+    }
+    Ok(json!({ "take": t.name(), "chapters": chapters_json(&tr.chapters) }))
+}
+
+fn send_to_publishkit(args: &Value) -> Result<Value, String> {
+    let t = Take::from(args)?;
+    let video = match args["file"].as_str().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(f) => PathBuf::from(f),
+        None => exports_of(&t.dir)
+            .into_iter()
+            .filter(|e| e.extension().is_some_and(|x| x == "mp4"))
+            .find(|e| polishcast_export::caption_files(e)[0].is_file())
+            .ok_or("no export of this take has captions: export it with captions files or burned first")?,
+    };
+    transcribing::send_to_publishkit(&video, &t.name())?;
+    Ok(json!({ "sent": video, "note": "PublishKit's Repurpose window is open with the video and its transcript" }))
 }
 
 // ── The window ───────────────────────────────────────────────────────────────────────────
