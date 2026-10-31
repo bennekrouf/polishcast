@@ -16,6 +16,15 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- When you use PolishCast from Claude, Codex or another agent, the agent now
+  reads the PolishCast skill first if you have it installed, so it follows the
+  skill's rules on what needs your yes and lays out its answers the way the
+  skill describes.
+
 ## [0.1.42] - 2026-10-31
 
 ### Changed
