@@ -16,6 +16,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- PolishCast's answers to Claude and other agents are shorter, so a long
+  session spends fewer tokens: empty fields are left out and nothing is
+  padded with spacing.
+
 ## [0.1.41] - 2026-10-31
 
 ### Added
