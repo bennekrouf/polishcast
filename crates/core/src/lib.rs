@@ -13,12 +13,14 @@ pub mod history;
 pub mod license;
 pub mod music;
 pub mod project;
+pub mod transcript;
 pub mod zoom;
 
 pub use blanks::{BlankParams, Cut, Loudness, Timeline};
 pub use camera::Viewport;
 pub use events::{Button, Click, CursorSample, EventLog};
 pub use project::{Project, Style};
+pub use transcript::Transcript;
 pub use zoom::Zoom;
 
 /// Files inside a take's folder.
@@ -34,4 +36,6 @@ pub mod take {
     pub const PROJECT: &str = "project.json";
     /// The sound's loudness over time (`Loudness` as JSON), measured once for blank cutting.
     pub const LOUDNESS: &str = "loudness.json";
+    /// What is said, and its chapters (`Transcript` as JSON), in recording time.
+    pub const TRANSCRIPT: &str = "transcript.json";
 }

@@ -16,6 +16,28 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- Transcript, in the editor: one click writes down what is said in a take,
+  on your Mayorana licence's AI credits, with no app or account to set up.
+  With your microphone and the computer's sound recorded apart, each line
+  says whether it's you or the person you're talking to. Copy the text, or
+  keep it for drafting.
+- Chapters, found in what you say: where you pause and change subject. Rename
+  them, join two, or have AI title them. Exports move them to match your cuts
+  and the playback speed.
+- Captions with an MP4: "Caption files" writes .srt and .vtt files ready for
+  YouTube, LinkedIn or TikTok, and the chapters as a YouTube description lists
+  them; "Burned in + files" also draws the captions into the video, for feeds
+  that play without sound.
+- Send to PublishKit: after exporting with captions, one click opens
+  PublishKit's Repurpose with the video and its transcript filled in, for a
+  blog draft or outline, clips and social posts in your site's voice.
+- Claude and other agents can transcribe a take, read or change its chapters,
+  export with captions and send the video to PublishKit.
+
 ## [0.1.43] - 2026-10-31
 
 ### Changed

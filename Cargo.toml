@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/capture", "crates/render", "crates/export", "crates/app"]
+members = ["crates/core", "crates/capture", "crates/render", "crates/export", "crates/transcribe", "crates/app"]
 exclude = ["vendor"]
 
 [workspace.package]
@@ -15,6 +15,7 @@ polishcast-core = { path = "crates/core" }
 polishcast-capture = { path = "crates/capture" }
 polishcast-render = { path = "crates/render" }
 polishcast-export = { path = "crates/export" }
+polishcast-transcribe = { path = "crates/transcribe" }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

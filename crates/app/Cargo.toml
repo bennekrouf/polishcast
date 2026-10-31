@@ -14,6 +14,7 @@ polishcast-core.workspace = true
 polishcast-capture.workspace = true
 polishcast-render.workspace = true
 polishcast-export.workspace = true
+polishcast-transcribe.workspace = true
 anyhow.workspace = true
 dioxus.workspace = true
 # rt: measuring a take's loudness off the UI thread (spawn_blocking; Dioxus runs on tokio).

@@ -1,6 +1,8 @@
 //! Exporting a take.
 
 use super::*;
+use crate::transcribing;
+use polishcast_export::Captions;
 
 /// The name suggested for an export: the take's, then what tells this export apart from the
 /// take's others (size, frame rate, shape, speed, whether the blanks are cut), then when it was
@@ -64,6 +66,8 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
     // The name being chosen for the next export, while its dialog is open.
     let mut naming = use_signal(|| None::<String>);
     let mut fraction = use_signal(|| 0.0f32);
+    // What sending the last export to PublishKit did.
+    let mut sent = use_signal(|| None::<Result<(), String>>);
     // ffmpeg is being fetched before the first export.
     let mut downloading = use_signal(|| false);
     // The take's name: what the free version's exports are counted by.
@@ -134,6 +138,7 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
                 let _ = tx.send(polishcast_export::export(&dir, &target, settings, &p, &c));
             });
             fraction.set(0.0);
+            sent.set(None);
             state.set(Export::Running { progress, cancel, done, out });
         }
     };
@@ -165,7 +170,7 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
                                 // Each format starts from its own sensible size and rate.
                                 settings.set(match format {
                                     Format::Mp4 => Settings::default(),
-                                    Format::Gif => Settings { format, long_side: 960, fps: 15, mute: false },
+                                    Format::Gif => Settings { format, long_side: 960, fps: 15, mute: false, ..Settings::default() },
                                 });
                                 state.set(Export::Idle);
                             }
@@ -194,6 +199,27 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
                     }
                 }
             }
+            if !gif {
+                if transcribing::path(&dir).is_file() {
+                    div { class: "segmented",
+                        for c in Captions::ALL {
+                            button {
+                                class: if current.captions == c { "on" } else { "" },
+                                disabled: running,
+                                title: match c {
+                                    Captions::Off => "No captions with the video",
+                                    Captions::Files => "SRT and VTT captions and the chapters, beside the video",
+                                    Captions::Burned => "The captions drawn into the picture, and the files beside it",
+                                },
+                                onclick: move |_| settings.write().captions = c,
+                                "{c.label()}"
+                            }
+                        }
+                    }
+                } else if current.captions != Captions::Off {
+                    p { class: "hint", "Transcribe the take to add captions." }
+                }
+            }
             match &*state.read() {
                 Export::Running { cancel, .. } => {
                     let cancel = cancel.clone();
@@ -215,11 +241,37 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
                 }
                 Export::Done(path) => {
                     let path = path.clone();
+                    let captioned = polishcast_export::caption_files(&path)[0].is_file();
                     rsx! {
                         p { class: "hint", "Saved {path.file_name().unwrap_or_default().to_string_lossy()}" }
+                        if captioned {
+                            p { class: "hint", "With its captions (.srt, .vtt) and chapters beside it." }
+                        }
                         div { class: "buttons",
-                            button { onclick: move |_| platform::reveal(&path), {platform::SHOW_IN_FOLDER} }
+                            button {
+                                onclick: {
+                                    let path = path.clone();
+                                    move |_| platform::reveal(&path)
+                                },
+                                {platform::SHOW_IN_FOLDER}
+                            }
                             button { class: "primary", onclick: start.clone(), "Export again" }
+                        }
+                        if captioned {
+                            button {
+                                class: "wide",
+                                title: "Opens PublishKit's Repurpose with this video and its transcript, for a blog draft and social posts",
+                                onclick: {
+                                    let (path, take) = (path.clone(), take.clone());
+                                    move |_| sent.set(Some(transcribing::send_to_publishkit(&path, &take).map(|_| ())))
+                                },
+                                "Send to PublishKit"
+                            }
+                            match sent() {
+                                Some(Ok(())) => rsx! { p { class: "hint", "Opened in PublishKit's Repurpose." } },
+                                Some(Err(e)) => rsx! { p { class: "error", "{e}" } },
+                                None => rsx! {},
+                            }
                         }
                     }
                 }

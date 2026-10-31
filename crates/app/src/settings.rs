@@ -30,6 +30,35 @@ pub struct Settings {
     /// turned it off in the MCP window.
     #[serde(default = "on")]
     pub allow_mcp_recording: bool,
+    /// Where api0 transcribes and names chapters, on the licence's AI credits.
+    #[serde(default)]
+    pub ai_region: AiRegion,
+}
+
+/// api0's AI regions, as every Mayorana app names them (`desktop_kit::region`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AiRegion {
+    #[default]
+    Europe,
+    China,
+    Usa,
+}
+
+impl AiRegion {
+    pub const ALL: [AiRegion; 3] = [AiRegion::Europe, AiRegion::China, AiRegion::Usa];
+
+    /// The id api0 takes as the model.
+    pub fn id(self) -> &'static str {
+        match self {
+            AiRegion::Europe => "europe",
+            AiRegion::China => "china",
+            AiRegion::Usa => "usa",
+        }
+    }
+
+    pub fn shown(self) -> &'static str {
+        desktop_kit::region::find(self.id()).map_or(self.id(), |r| r.shown())
+    }
 }
 
 fn on() -> bool {
@@ -44,6 +73,7 @@ impl Default for Settings {
             keep_old_app: false,
             sidebar_width: None,
             allow_mcp_recording: true,
+            ai_region: AiRegion::default(),
         }
     }
 }

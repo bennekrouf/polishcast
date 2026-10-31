@@ -25,7 +25,9 @@ use std::sync::{mpsc, Arc};
 mod panels;
 use panels::*;
 mod export;
+mod transcript;
 pub(crate) use export::*;
+use transcript::TranscriptPanel;
 
 const PREVIEW_JS: &str = include_str!("../assets/preview.js");
 /// Frames per second of the preview's track; it interpolates in between.
@@ -647,6 +649,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                 }
                 BlanksPanel { doc, dir: dir.clone(), loudness }
                 NoisePanel { doc, loudness }
+                TranscriptPanel { dir: dir.clone() }
                 ExportPanel { doc, dir: dir.clone() }
             }
         }

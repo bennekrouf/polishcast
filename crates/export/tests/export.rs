@@ -61,7 +61,7 @@ fn exports_video_with_sound() {
     export(
         &dir,
         &out,
-        Settings { format: Format::Mp4, long_side: 640, fps: 30, mute: false },
+        Settings { format: Format::Mp4, long_side: 640, fps: 30, mute: false, ..Settings::default() },
         &progress,
         &AtomicBool::new(false),
     )
@@ -161,7 +161,7 @@ fn blanks_are_cut_from_picture_and_sound() {
     export(
         &dir,
         &out,
-        Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
+        Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false, ..Settings::default() },
         &Progress::default(),
         &AtomicBool::new(false),
     )
@@ -213,7 +213,7 @@ fn a_faster_speed_shortens_picture_and_sound() {
         export(
             &dir,
             &out,
-            Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
+            Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false, ..Settings::default() },
             &progress,
             &AtomicBool::new(false),
         )
@@ -260,7 +260,7 @@ fn a_muted_mp4_has_no_sound() {
 
     for mute in [false, true] {
         let out = dir.join(format!("out-{mute}.mp4"));
-        let settings = Settings { format: Format::Mp4, long_side: 320, fps: 30, mute };
+        let settings = Settings { format: Format::Mp4, long_side: 320, fps: 30, mute, ..Settings::default() };
         export(&dir, &out, settings, &Progress::default(), &AtomicBool::new(false)).unwrap();
         let streams = probe(&ffprobe, &out, "stream=codec_type");
         let expected = if mute { "video" } else { "video\naudio" };
@@ -279,7 +279,7 @@ fn exports_a_looping_gif() {
     std::fs::create_dir_all(&dir).unwrap();
     make_take(&dir, &ffmpeg);
     let out = dir.join("out.gif");
-    let settings = Settings { format: Format::Gif, long_side: 320, fps: 10, mute: false };
+    let settings = Settings { format: Format::Gif, long_side: 320, fps: 10, mute: false, ..Settings::default() };
     export(&dir, &out, settings, &Progress::default(), &AtomicBool::new(false)).unwrap();
     if ffprobe.is_file() {
         let video = probe(&ffprobe, &out, "stream=codec_name,width,height,nb_read_frames");
@@ -312,7 +312,7 @@ fn a_picture_background_and_a_removed_clip_export() {
     p.save(&dir.join(take::PROJECT)).unwrap();
 
     let out = dir.join("out.mp4");
-    let settings = Settings { format: Format::Mp4, long_side: 640, fps: 30, mute: false };
+    let settings = Settings { format: Format::Mp4, long_side: 640, fps: 30, mute: false, ..Settings::default() };
     export(&dir, &out, settings, &Progress::default(), &AtomicBool::new(false)).unwrap();
     if ffprobe.is_file() {
         let duration: f64 = probe(&ffprobe, &out, "format=duration").parse().unwrap();
@@ -369,7 +369,7 @@ fn music_plays_at_its_moments_under_the_voice() {
     export(
         &dir,
         &out,
-        Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
+        Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false, ..Settings::default() },
         &Progress::default(),
         &AtomicBool::new(false),
     )
@@ -421,7 +421,7 @@ fn music_is_lowered_while_the_voice_speaks() {
     export(
         &dir,
         &out,
-        Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
+        Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false, ..Settings::default() },
         &Progress::default(),
         &AtomicBool::new(false),
     )
@@ -478,7 +478,7 @@ fn background_noise_is_taken_out_of_the_voice_but_not_the_music() {
         export(
             &dir,
             &out,
-            Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false },
+            Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false, ..Settings::default() },
             &Progress::default(),
             &AtomicBool::new(false),
         )
@@ -497,5 +497,60 @@ fn background_noise_is_taken_out_of_the_voice_but_not_the_music() {
     let (plain, cleaned) = (export_with(None, true), export_with(Some(1.0), true));
     let music = |file| band_db(&ffmpeg, file, 1500, (3.5, 4.5));
     assert!((music(&cleaned) - music(&plain)).abs() < 1.0, "music {:.1} → {:.1} dB", music(&plain), music(&cleaned));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// One frame of `file` at `t` seconds, as raw RGB.
+fn frame_at(ffmpeg: &Path, file: &Path, t: f64) -> Vec<u8> {
+    let out = Command::new(ffmpeg)
+        .args(["-v", "error", "-ss", &t.to_string(), "-i"])
+        .arg(file)
+        .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+        .output()
+        .unwrap();
+    out.stdout
+}
+
+#[test]
+fn captions_go_beside_the_video_and_into_it() {
+    use polishcast_core::transcript::{Chapter, Segment, Transcript};
+    use polishcast_export::{caption_files, Captions};
+    let Some(ffmpeg) = ffmpeg() else {
+        eprintln!("skipped: no ffmpeg");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("polishcast-captions-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    make_take(&dir, &ffmpeg);
+    let settings = |captions| Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false, captions };
+
+    // No transcript: refused before anything is written.
+    let out = dir.join("burned.mp4");
+    let refused = export(&dir, &out, settings(Captions::Files), &Progress::default(), &AtomicBool::new(false));
+    assert!(refused.unwrap_err().to_string().contains("no transcript"));
+    assert!(!out.exists());
+
+    let transcript = Transcript {
+        language: "en".into(),
+        model: "test".into(),
+        segments: vec![Segment { start: 0.2, end: 1.8, text: "Captions are drawn here".into(), speaker: None }],
+        chapters: vec![Chapter { start: 0.0, title: "Only one".into() }],
+    };
+    transcript.save(&dir.join(take::TRANSCRIPT)).unwrap();
+    export(&dir, &out, settings(Captions::Burned), &Progress::default(), &AtomicBool::new(false)).unwrap();
+    let [srt, vtt, chapters] = caption_files(&out);
+    assert_eq!(std::fs::read_to_string(&srt).unwrap(), "1\n00:00:00,200 --> 00:00:01,800\nCaptions are drawn here\n\n");
+    assert!(std::fs::read_to_string(&vtt).unwrap().starts_with("WEBVTT\n\n00:00:00.200 --> 00:00:01.800\n"));
+    // One chapter is fewer than YouTube takes: no chapters file.
+    assert!(!chapters.exists());
+
+    let plain = dir.join("plain.mp4");
+    export(&dir, &plain, settings(Captions::Off), &Progress::default(), &AtomicBool::new(false)).unwrap();
+    assert!(!caption_files(&plain)[0].exists());
+    let (with, without) = (frame_at(&ffmpeg, &out, 1.0), frame_at(&ffmpeg, &plain, 1.0));
+    assert_eq!(with.len(), without.len());
+    assert!(!with.is_empty());
+    let differing = with.iter().zip(&without).filter(|(a, b)| a.abs_diff(**b) > 40).count();
+    assert!(differing > 500, "the captions changed only {differing} bytes of the picture");
     std::fs::remove_dir_all(&dir).unwrap();
 }

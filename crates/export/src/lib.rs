@@ -12,6 +12,7 @@ pub mod tools;
 
 use anyhow::{anyhow, bail, Context, Result};
 use polishcast_core::project::Background;
+use polishcast_core::transcript::{self, Transcript};
 use polishcast_core::{take, EventLog, Project, Timeline};
 use polishcast_render::compose::{load_image, Compositor};
 use polishcast_render::Scene;
@@ -48,12 +49,62 @@ pub struct Settings {
     pub fps: u32,
     /// An MP4 without the recording's sound or the music. A GIF never has sound.
     pub mute: bool,
+    /// What the take's transcript adds to an MP4. A GIF has none.
+    pub captions: Captions,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { format: Format::Mp4, long_side: 1920, fps: 30, mute: false }
+        Self { format: Format::Mp4, long_side: 1920, fps: 30, mute: false, captions: Captions::Off }
     }
+}
+
+/// Captions from the take's transcript, for an MP4.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Captions {
+    #[default]
+    Off,
+    /// `.srt` and `.vtt` files beside the video, and its chapters as a YouTube description lists
+    /// them (`.chapters.txt`), for the platform to show.
+    Files,
+    /// The same files, and the captions drawn into the picture too, for feeds that play videos
+    /// without sound.
+    Burned,
+}
+
+impl Captions {
+    pub const ALL: [Captions; 3] = [Captions::Off, Captions::Files, Captions::Burned];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Captions::Off => "off",
+            Captions::Files => "files",
+            Captions::Burned => "burned",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Captions::Off => "No captions",
+            Captions::Files => "Caption files",
+            Captions::Burned => "Burned in + files",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Captions> {
+        Captions::ALL.into_iter().find(|c| c.key() == key)
+    }
+}
+
+/// How burned-in captions look: white on a translucent box, low in the frame, in a font every
+/// computer has.
+const CAPTION_STYLE: &str = "FontName=Arial,FontSize=16,Bold=1,PrimaryColour=&H00FFFFFF,\
+OutlineColour=&H66000000,BackColour=&H66000000,BorderStyle=3,Outline=6,Shadow=0,MarginV=22";
+
+/// The files written beside `video` for its captions: `.srt`, `.vtt`, and `.chapters.txt`.
+pub fn caption_files(video: &Path) -> [PathBuf; 3] {
+    let stem = video.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    [video.with_extension("srt"), video.with_extension("vtt"), video.with_file_name(format!("{stem}.chapters.txt"))]
 }
 
 /// Frames written so far, out of the total; shared with the UI while an export runs. While
@@ -157,6 +208,9 @@ pub fn export(dir: &Path, out: &Path, settings: Settings, progress: &Progress, c
     let result = run(dir, out, settings, progress, cancel);
     if result.is_err() {
         let _ = std::fs::remove_file(out);
+        for file in caption_files(out) {
+            let _ = std::fs::remove_file(file);
+        }
     }
     result
 }
@@ -203,6 +257,36 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     let cutting = timeline.parts.len() != 1 || timeline.duration() < scene.project.duration;
     let gif = settings.format == Format::Gif;
     let silent = gif || settings.mute;
+    // The captions, in the video's time, written beside it; drawn into it from a folder of their
+    // own, so ffmpeg's filter reads a plain file name rather than a path to escape.
+    let captions = if gif { Captions::Off } else { settings.captions };
+    let burn_dir = if captions == Captions::Off {
+        None
+    } else {
+        let transcript = Transcript::load(&dir.join(take::TRANSCRIPT))
+            .filter(|t| !t.segments.is_empty())
+            .context("The take has no transcript yet: transcribe it before exporting captions.")?;
+        let lines = transcript.in_video(&timeline, speed);
+        let [srt, vtt, chapters] = caption_files(out);
+        std::fs::write(&srt, transcript::srt(&lines)).with_context(|| format!("Writing {}", srt.display()))?;
+        std::fs::write(&vtt, transcript::vtt(&lines)).with_context(|| format!("Writing {}", vtt.display()))?;
+        let marks = transcript.chapters_in_video(&timeline, speed);
+        if marks.len() >= 3 {
+            std::fs::write(&chapters, transcript::youtube_chapters(&marks))
+                .with_context(|| format!("Writing {}", chapters.display()))?;
+        }
+        if captions == Captions::Burned {
+            if !has_filter(&ffmpeg, "subtitles") {
+                bail!("This ffmpeg can't draw captions (it was built without libass). The caption files were written.");
+            }
+            let burn = std::env::temp_dir().join(format!("polishcast-captions-{}", std::process::id()));
+            std::fs::create_dir_all(&burn)?;
+            std::fs::write(burn.join("captions.srt"), transcript::srt(&lines))?;
+            Some(burn)
+        } else {
+            None
+        }
+    };
     let tracks = if silent { 0 } else { sound::audio_tracks(&ffmpeg, &screen)? };
     // Music, placed in video time: inputs after the recording.
     let music = if silent { Vec::new() } else { scene.project.placed_music() };
@@ -275,13 +359,21 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
             } else {
                 ["-map", "0:v:0", "-map", "1:a:0?"].map(String::from).to_vec()
             })
-            .args(["-vf", "scale=out_color_matrix=bt709:out_range=tv", "-pix_fmt", "yuv420p"])
+            .args(["-vf", &video_filter(burn_dir.is_some()), "-pix_fmt", "yuv420p"])
             .args(["-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709"])
             .args(video_codec(width, height, fps))
             .args(["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]);
     }
-    let mut encoder =
-        encoder.arg(out).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().context("Starting ffmpeg")?;
+    if let Some(burn) = &burn_dir {
+        encoder.current_dir(burn);
+    }
+    let encoder = encoder.arg(out).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().context("Starting ffmpeg");
+    if encoder.is_err() {
+        if let Some(burn) = &burn_dir {
+            let _ = std::fs::remove_dir_all(burn);
+        }
+    }
+    let mut encoder = encoder?;
     let encoder_errors = collect(encoder.stderr.take());
 
     let dissolve = (DISSOLVE_SECS * fps as f64).round() as u32;
@@ -304,6 +396,9 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
     drop(encoder.stdin.take());
     let decoded = decoder.wait()?;
     let encoded = encoder.wait()?;
+    if let Some(burn) = &burn_dir {
+        let _ = std::fs::remove_dir_all(burn);
+    }
     let errors = |h: JoinHandle<String>| h.join().unwrap_or_default().trim().to_string();
     let (decoder_errors, encoder_errors) = (errors(decoder_errors), errors(encoder_errors));
     match pumped {
@@ -319,6 +414,25 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
         bail!("Encoding failed: {encoder_errors}");
     }
     Ok(())
+}
+
+/// The MP4's picture filter: BT.709 colours, and the captions drawn in first when `burn` (from
+/// `captions.srt` in the encoder's working folder).
+fn video_filter(burn: bool) -> String {
+    let colour = "scale=out_color_matrix=bt709:out_range=tv";
+    if burn {
+        format!("subtitles=captions.srt:force_style='{CAPTION_STYLE}',{colour}")
+    } else {
+        colour.to_string()
+    }
+}
+
+/// Whether this ffmpeg has the filter `name`.
+fn has_filter(ffmpeg: &Path, name: &str) -> bool {
+    tools::command(ffmpeg)
+        .args(["-hide_banner", "-filters"])
+        .output()
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.split_whitespace().nth(1) == Some(name)))
 }
 
 /// Seconds over which the screen after a cut fades in over the one before it. Where the screen
