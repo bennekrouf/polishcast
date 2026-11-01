@@ -122,6 +122,8 @@ button.panel-toggle { padding: 2px 8px; color: var(--muted); font-size: 15px; li
 button.panel-toggle:hover { color: var(--text); }
 
 .main { flex: 1; min-width: 0; display: flex; }
+/* The library and calendar every Mayorana app shares, in place of the editor. */
+.shared-pane { flex: 1; min-width: 0; overflow: auto; }
 
 /* What the next recording takes in */
 .record-settings { margin: 10px 0 4px; }

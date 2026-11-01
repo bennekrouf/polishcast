@@ -16,6 +16,18 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- Library and Calendar, beside your takes: the media library PublishKit and
+  TrackCut share. Each take shows there by itself, recording while you record,
+  polishing until you export it and ready once you have, with its exports and
+  captions. PublishKit's posts and TrackCut's recordings are there too, so you
+  see what is coming out and when. Set a status or tags by hand, search, or
+  open anything in the app that made it; a click on a PublishKit draft opens it
+  in PublishKit.
+
 ## [0.1.44] - 2026-10-31
 
 ### Added

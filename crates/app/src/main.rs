@@ -6,6 +6,7 @@ mod editor;
 mod ffmpeg_help;
 mod instance;
 mod kit;
+mod library;
 mod licence;
 mod limits;
 mod mcp;

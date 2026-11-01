@@ -420,6 +420,17 @@ fn tools() -> Value {
 }
 
 fn call(name: &str, args: &Value) -> Result<Value, String> {
+    let result = run(name, args);
+    // A new export makes the take ready in the library the other apps show.
+    if result.is_ok() && name == "export" {
+        if let Ok(t) = Take::from(args) {
+            crate::library::sync_take(&t.dir);
+        }
+    }
+    result
+}
+
+fn run(name: &str, args: &Value) -> Result<Value, String> {
     match name {
         "list_takes" => Ok(list()),
         "get_take" => Take::from(args).map(|t| t.describe()),
