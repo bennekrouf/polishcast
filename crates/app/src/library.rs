@@ -35,7 +35,9 @@ pub fn item_of(dir: &Path) -> Option<Item> {
         item = item.with_file(screen, Role::Source);
     }
     for export in &exports {
-        let role = if export.extension().is_some_and(|e| e == "gif") { Role::Clip } else { Role::Video };
+        let stem = export.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let clip = export.extension().is_some_and(|e| e == "gif") || stem.contains(" clip ");
+        let role = if clip { Role::Clip } else { Role::Video };
         item = item.with_file(export, role);
         for captions in polishcast_export::caption_files(export).into_iter().filter(|c| c.is_file()) {
             item = item.with_file(captions, Role::Captions);
