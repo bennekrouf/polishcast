@@ -163,6 +163,27 @@ impl Project {
 
     /// The video's timeline: the recording less the clips removed, and the blanks cut if blank
     /// cutting is on.
+    /// The project cut down to `start`..`end`, in seconds of the video it exports (after its
+    /// cuts and speed), as a clip of it: what is around is left out, its cuts, zooms and style
+    /// inside stay. `None` when under half a second of video is left.
+    pub fn clipped(&self, start: f64, end: f64) -> Option<Project> {
+        let timeline = self.timeline();
+        let speed = self.speed();
+        let (start, end) = (start.max(0.0), end.min(timeline.duration() / speed));
+        if end - start < 0.5 {
+            return None;
+        }
+        let (from, to) = (timeline.to_source(start * speed), timeline.to_source(end * speed));
+        let mut p = self.clone();
+        if from > 0.0 {
+            crate::clips::remove(&mut p.removed, (0.0, from));
+        }
+        if to < p.duration {
+            crate::clips::remove(&mut p.removed, (to, p.duration));
+        }
+        Some(p)
+    }
+
     pub fn timeline(&self) -> Timeline {
         let blanks: &[Cut] = if self.blanks.is_some() { &self.cuts } else { &[] };
         let removed = self.removed.iter().map(|&(start, end)| Cut { start, end, keep: false });
@@ -193,6 +214,19 @@ impl Project {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_clip_is_taken_in_video_time() {
+        let mut p = super::Project::new(60.0, 1920, 1080, &crate::EventLog::default());
+        // 10–20 s of the recording left out, played twice as fast: video second 10 is
+        // recording second 30.
+        p.removed = vec![(10.0, 20.0)];
+        p.speed = 2.0;
+        let clip = p.clipped(2.5, 12.5).unwrap();
+        assert_eq!(clip.removed, [(0.0, 5.0), (10.0, 20.0), (35.0, 60.0)]);
+        assert!((clip.timeline().duration() / clip.speed() - 10.0).abs() < 1e-9);
+        assert!(p.clipped(24.8, 30.0).is_none(), "past the end of the 25 s video");
+    }
+
     use super::*;
 
     #[test]

@@ -47,7 +47,10 @@ PolishCast's MCP window; the recording tools then say how to turn it back on. A 
 shown, stop_recording, set_zooms with suggest, export. transcribe writes the take's transcript with api0 on the \
 licence's AI credits and finds its chapters; get_transcript reads it (text, SRT, VTT or chapters), set_chapters \
 changes them; export with captions writes caption files or burns them in; send_to_publishkit opens PublishKit's \
-Repurpose with an exported video and its captions, for a blog draft and social posts. \
+Repurpose with an exported video and its captions, for a blog draft and social posts. export_clip writes \
+one of the clips Repurpose suggests (its times are seconds of that exported video) as a vertical MP4 with \
+the captions drawn in, without changing the take; attach it to its TikTok or Instagram draft with \
+PublishKit's update_post. \
 Before calling these tools, read the polishcast skill if one is available: it has the confirmation \
 rules, defaults and report layouts that these instructions leave out.";
 
@@ -88,15 +91,17 @@ fn handle(id: Value, message: &Value) -> Value {
                     "protocolVersion": version,
                     "capabilities": { "tools": {} },
                     "serverInfo": { "name": "polishcast", "version": env!("CARGO_PKG_VERSION") },
-                    "instructions": INSTRUCTIONS,
+                    "instructions": format!("{INSTRUCTIONS} {}", desktop_kit::library::mcp::INSTRUCTIONS),
                 }),
             )
         }
         "ping" => result(id, json!({})),
-        "tools/list" => result(id, json!({ "tools": tools() })),
+        "tools/list" => result(id, json!({ "tools": with_library(tools()) })),
         "tools/call" => {
             let name = params["name"].as_str().unwrap_or("");
-            let (text, is_error) = match call(name, &params["arguments"]) {
+            let args = &params["arguments"];
+            let answer = desktop_kit::library::mcp::call(name, args).unwrap_or_else(|| call(name, args));
+            let (text, is_error) = match answer {
                 Ok(value) => (pretty(&value), false),
                 Err(why) => (why, true),
             };
@@ -104,6 +109,14 @@ fn handle(id: Value, message: &Value) -> Value {
         }
         _ => error(id, -32601, &format!("no method {method}")),
     }
+}
+
+/// The app's tools, then the media library's, which every Mayorana app serves alike.
+fn with_library(mut tools: Value) -> Value {
+    if let Some(list) = tools.as_array_mut() {
+        list.extend(desktop_kit::library::mcp::tools());
+    }
+    tools
 }
 
 fn write(stdout: &mut std::io::Stdout, reply: &Value) {
@@ -282,6 +295,29 @@ fn tools() -> Value {
             },
         },
         {
+            "name": "export_clip",
+            "description": "Writes a short clip of a take as an MP4 next to its folder, for TikTok, Reels or Shorts: \
+                            start and end are seconds of the take's exported video (after its cuts and speed), such as \
+                            the clip times PublishKit's Repurpose suggests. The take's own edit is left as it is; zooms, \
+                            cuts and style inside the clip are kept. Vertical (9:16) with the captions drawn in by \
+                            default. Give the take, or the exported video the times are from (PublishKit's \
+                            repurposed_from). Attach the file to its draft with PublishKit's update_post (media).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "take": take_arg,
+                    "video": { "type": "string", "description": "An exported MP4 of the take, as an absolute path: its take is found from it." },
+                    "start": { "type": "number", "description": "Seconds into the exported video." },
+                    "end": { "type": "number", "description": "Seconds into the exported video." },
+                    "aspect": { "type": "string", "enum": ["9:16", "1:1", "16:9", "screen"], "description": "Default 9:16." },
+                    "size": { "type": "integer", "description": format!("Pixels along the longer side, {mp4_sizes:?}. Default 1920.") },
+                    "captions": { "type": "string", "enum": ["off", "files", "burned"], "description": "Default burned when the take has a transcript, off otherwise." },
+                    "name": { "type": "string", "description": "The file's name, without extension." },
+                },
+                "required": ["start", "end"],
+            },
+        },
+        {
             "name": "transcribe",
             "description": "Transcribes the take with api0 on the Mayorana licence's AI credits (about a credit per few \
                             minutes of sound), finds its chapters, and keeps both with the take, replacing an earlier \
@@ -422,8 +458,8 @@ fn tools() -> Value {
 fn call(name: &str, args: &Value) -> Result<Value, String> {
     let result = run(name, args);
     // A new export makes the take ready in the library the other apps show.
-    if result.is_ok() && name == "export" {
-        if let Ok(t) = Take::from(args) {
+    if result.is_ok() && matches!(name, "export" | "export_clip") {
+        if let Ok(t) = Take::from(args).or_else(|_| Take::of_video(args)) {
             crate::library::sync_take(&t.dir);
         }
     }
@@ -439,6 +475,7 @@ fn run(name: &str, args: &Value) -> Result<Value, String> {
         "set_blanks" => set_blanks(args),
         "set_style" => set_style(args),
         "export" => export(args),
+        "export_clip" => export_clip(args),
         "transcribe" => transcribe(args),
         "get_transcript" => get_transcript(args),
         "set_chapters" => set_chapters(args),
@@ -479,6 +516,26 @@ impl Take {
         Ok(Self { dir })
     }
 
+    /// The take an exported video (`video`) was made from: exports are named after their take
+    /// and written beside its folder.
+    fn of_video(args: &Value) -> Result<Self, String> {
+        let video = args["video"].as_str().map(str::trim).filter(|s| !s.is_empty()).ok_or("give take or video")?;
+        let video = Path::new(video);
+        let stem = video.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let folder = video.parent().ok_or("video is an absolute path")?;
+        let dir = std::fs::read_dir(folder)
+            .map_err(|e| format!("{}: {e}", folder.display()))?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|d| d.join(take::SCREEN).is_file())
+            .filter(|d| {
+                let name = d.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                stem == name || stem.strip_prefix(&name).is_some_and(|rest| rest.starts_with(' '))
+            })
+            .max_by_key(|d| d.as_os_str().len())
+            .ok_or(format!("no take beside {} that it was exported from", video.display()))?;
+        Take::from(&json!({ "take": dir }))
+    }
+
     fn name(&self) -> String {
         self.dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
     }
@@ -517,6 +574,16 @@ fn round(v: f64) -> f64 {
 /// The model keeps sizes and positions as `f32`, which read back as 1.7999999523.
 fn round32(v: f32) -> f64 {
     round(f64::from(v))
+}
+
+fn aspect_of(name: &str) -> Result<Aspect, String> {
+    match name {
+        "screen" => Ok(Aspect::Source),
+        "16:9" => Ok(Aspect::Landscape16x9),
+        "9:16" => Ok(Aspect::Portrait9x16),
+        "1:1" => Ok(Aspect::Square),
+        other => Err(format!("aspect is screen, 16:9, 9:16 or 1:1, not {other}")),
+    }
 }
 
 fn aspect_name(a: Aspect) -> &'static str {
@@ -778,13 +845,7 @@ fn set_style(args: &Value) -> Result<Value, String> {
             s.shadow = v;
         }
         if let Some(a) = args["aspect"].as_str() {
-            s.aspect = match a {
-                "screen" => Aspect::Source,
-                "16:9" => Aspect::Landscape16x9,
-                "9:16" => Aspect::Portrait9x16,
-                "1:1" => Aspect::Square,
-                other => return Err(format!("aspect is screen, 16:9, 9:16 or 1:1, not {other}")),
-            };
+            s.aspect = aspect_of(a)?;
         }
         if let Some(v) = number("cursor_scale") {
             s.cursor_scale = (v as f32).clamp(0.5, 4.0);
@@ -813,6 +874,69 @@ fn set_style(args: &Value) -> Result<Value, String> {
         Ok(())
     })?;
     Ok(t.describe())
+}
+
+fn export_clip(args: &Value) -> Result<Value, String> {
+    let t = Take::from(args).or_else(|_| Take::of_video(args))?;
+    let (start, end) = match (args["start"].as_f64(), args["end"].as_f64()) {
+        (Some(s), Some(e)) if e > s => (s, e),
+        _ => return Err("start and end are seconds of the video, end after start".into()),
+    };
+    let p = t.project()?;
+    let mut clip = p
+        .clipped(start, end)
+        .ok_or(format!("{start}–{end} s isn't in the video, which is {:.1} s long", p.video_duration()))?;
+    clip.style.aspect = aspect_of(args["aspect"].as_str().unwrap_or("9:16"))?;
+    let long_side = args["size"].as_u64().map_or(1920, |n| n as u32);
+    if !RESOLUTIONS.iter().any(|(px, _)| *px == long_side) {
+        let allowed: Vec<u32> = RESOLUTIONS.iter().map(|(px, _)| *px).collect();
+        return Err(format!("size is one of {allowed:?}"));
+    }
+    let transcript = transcribing::load(&t.dir).is_some();
+    let captions = match args["captions"].as_str() {
+        None if transcript => Captions::Burned,
+        None => Captions::Off,
+        Some(key) => Captions::from_key(key).ok_or(format!("captions is off, files or burned, not {key}"))?,
+    };
+    if captions != Captions::Off && !transcript {
+        return Err("the take has no transcript yet: call transcribe first, or captions off".into());
+    }
+    let name = t.name();
+    if !licence::allows_export(&name) {
+        return Err(format!(
+            "The free version of PolishCast exports {} different takes, and they are used. PolishCast Pro exports \
+             every take: {}",
+            polishcast_core::license::FREE_EXPORTS,
+            licence::buy_url()
+        ));
+    }
+    let settings = Settings { format: Format::Mp4, long_side, fps: 30, mute: false, captions };
+    let file_name = match args["name"].as_str() {
+        Some(typed) => clean_export_name(typed, Format::Mp4).ok_or("name is empty")?,
+        None => {
+            let now = chrono::Local::now().naive_local();
+            let full = export_name(&name, settings, clip.style.aspect, clip.speed, clip.blanks.is_some(), now);
+            format!("{name} clip {start:.1}s-{end:.1}s{}", &full[name.len()..])
+        }
+    };
+    let out = export_path(&t.dir, &file_name, Format::Mp4);
+    let started = std::time::Instant::now();
+    polishcast_export::export_project(&t.dir, clip, &out, settings, &Progress::default(), &AtomicBool::new(false))
+        .map_err(|e| format!("{e:#}"))?;
+    licence::count_export(&name);
+    let mut v = json!({
+        "file": out,
+        "take": name,
+        "seconds": ((end - start) * 10.0).round() / 10.0,
+        "size_mb": std::fs::metadata(&out).map_or(0.0, |m| (m.len() as f64 / 1e5).round() / 10.0),
+        "took_secs": started.elapsed().as_secs(),
+    });
+    if captions != Captions::Off {
+        let written: Vec<PathBuf> =
+            polishcast_export::caption_files(&out).into_iter().filter(|f| f.is_file()).collect();
+        v["captions"] = json!(written);
+    }
+    Ok(v)
 }
 
 fn export(args: &Value) -> Result<Value, String> {
