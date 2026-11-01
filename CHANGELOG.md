@@ -38,6 +38,13 @@ user sees in the update prompt should all be accounted for.
   any week, plan an idea, and set an item's status, tags or notes. The same
   in PolishCast, TrackCut and PublishKit.
 
+### Changed
+
+- Using PolishCast from Claude, Codex or another agent takes less of the agent's
+  context on every message, including ones that have nothing to do with
+  PolishCast: its instructions are a few lines, and what a setting every tool
+  takes means is said once rather than in each tool.
+
 ## [0.1.44] - 2026-10-31
 
 ### Added
