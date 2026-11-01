@@ -23,6 +23,27 @@ use std::time::{Duration, Instant};
 
 const CSS: &str = include_str!("../assets/style.css");
 
+/// What the main area shows: the selected take, or the library and calendar every Mayorana
+/// app shares.
+#[derive(Clone, Copy, PartialEq)]
+enum View {
+    Takes,
+    Library,
+    Calendar,
+}
+
+impl View {
+    const ALL: [View; 3] = [View::Takes, View::Library, View::Calendar];
+
+    fn label(self) -> &'static str {
+        match self {
+            View::Takes => "Takes",
+            View::Library => "Library",
+            View::Calendar => "Calendar",
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Status {
     Idle,
@@ -130,6 +151,41 @@ pub fn App() -> Element {
     let mut error = use_signal(|| Option::<String>::None);
     let mut library = use_signal(takes::list);
     let mut selected = use_signal(|| library.peek().first().map(|e| e.dir.clone()));
+    let mut view = use_signal(|| View::Takes);
+    // The library every Mayorana app shares, and a take opened from it, here or from
+    // PublishKit or TrackCut.
+    let shared = desktop_kit::ui::use_library();
+    let mut open_take = move |target: String| {
+        let dir = PathBuf::from(target);
+        if dir.is_dir() {
+            selected.set(Some(dir));
+            view.set(View::Takes);
+            window().set_visible(true);
+            window().set_focus();
+        } else {
+            error.set(Some(format!("{} isn't there any more.", dir.display())));
+        }
+    };
+    // The takes in the shared library, kept as they are on disk: read again whenever a take or
+    // an export comes, goes or changes.
+    use_future(move || async move {
+        let mut last = None;
+        loop {
+            let stamp = tokio::task::spawn_blocking(crate::library::stamp).await.ok();
+            if stamp != last {
+                let _ = tokio::task::spawn_blocking(crate::library::sync_all).await;
+                last = stamp;
+            }
+            if let Some(note) =
+                tokio::task::spawn_blocking(|| desktop_kit::handoff::take("polishcast", "open")).await.ok().flatten()
+            {
+                if let Some(target) = note["open"].as_str() {
+                    open_take(target.to_string());
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+        }
+    });
     // Takes whose recording is being shrunk in the background, and why the last one wasn't.
     let mut compacting = use_signal(HashSet::<PathBuf>::new);
     let mut notice = use_signal(|| Option::<String>::None);
@@ -191,6 +247,7 @@ pub fn App() -> Element {
             error.set(None);
             recording_dir.set(Some(dir.clone()));
             auto_stopped.set(None);
+            crate::library::recording(&dir);
             recorder.start(dir, options);
             status.set(Status::Starting);
         })
@@ -473,6 +530,15 @@ pub fn App() -> Element {
                 }
             },
             pro: rsx! { ProButton { pro: pro.kit(), hint: crate::licence::hint() } },
+            div { class: "kit-tabs",
+                for v in View::ALL {
+                    button {
+                        class: if view() == v { "kit-tab kit-on" } else { "kit-tab" },
+                        onclick: move |_| view.set(v),
+                        "{v.label()}"
+                    }
+                }
+            }
         }
         Banners {
             if let Some(app) = old_app() {
@@ -579,7 +645,10 @@ pub fn App() -> Element {
                             class: if selected().as_ref() == Some(&entry.dir) { "on" } else { "" },
                             onclick: {
                                 let dir = entry.dir.clone();
-                                move |_| selected.set(Some(dir.clone()))
+                                move |_| {
+                                    selected.set(Some(dir.clone()));
+                                    view.set(View::Takes);
+                                }
                             },
                             span { class: "name", "{entry.name}" }
                             span { class: "meta",
@@ -683,7 +752,15 @@ pub fn App() -> Element {
                 }
             }
             main { class: "main",
-                if let Some(dir) = selected() {
+                if view() == View::Library {
+                    div { class: "shared-pane",
+                        desktop_kit::ui::LibraryView { here: "polishcast", items: shared, on_open: open_take }
+                    }
+                } else if view() == View::Calendar {
+                    div { class: "shared-pane",
+                        desktop_kit::ui::PipelineCalendar { here: "polishcast", items: shared, on_open: open_take }
+                    }
+                } else if let Some(dir) = selected() {
                     // Reloaded when its recording is replaced by the compacted one.
                     Editor { key: "{dir.display()}-{compacting.read().contains(&dir)}", dir }
                 } else {
