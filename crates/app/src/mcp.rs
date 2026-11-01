@@ -17,20 +17,16 @@ use crate::editor::{
     GIF_FRAME_RATES, GIF_SIZES, RESOLUTIONS,
 };
 use crate::{licence, remote, takes, transcribing};
+use desktop_kit::mcp::Server;
 use dioxus::prelude::*;
 use polishcast_core::project::{Aspect, Background, DENOISE_STRENGTH, SPEEDS};
 use polishcast_core::zoom::{self, auto_zoom, AutoZoom, Zoom};
 use polishcast_core::{clips, take, EventLog, Loudness, Project};
 use polishcast_export::{Captions, Format, Progress, Settings};
 use serde_json::{json, Value};
-use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::OnceLock;
-
-/// The newest protocol revision this server speaks. A client asking for an older one gets its
-/// own back; everything used here exists in all of them.
-const PROTOCOL: &str = "2025-06-18";
 
 const INSTRUCTIONS: &str = "PolishCast turns screen recordings into polished videos: the camera zooms in where \
 the person clicked, the cursor is redrawn smooth, and the recording sits on a styled background. Each recording \
@@ -43,100 +39,12 @@ rules, defaults and report layouts that these instructions leave out.";
 /// The client's name, from `initialize`, shown in the menu bar while it records.
 static CLIENT: OnceLock<String> = OnceLock::new();
 
+/// What the client is told: the plumbing is desktop-kit's, the tools are below.
+const SERVER: Server =
+    Server { name: "polishcast", version: env!("CARGO_PKG_VERSION"), instructions: INSTRUCTIONS, tools, library: true };
+
 pub fn serve() {
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
-        if line.trim().is_empty() {
-            continue;
-        }
-        let Ok(message) = serde_json::from_str::<Value>(&line) else {
-            write(&mut stdout, &error(Value::Null, -32700, "not JSON"));
-            continue;
-        };
-        // A notification (no id) asks for nothing back.
-        let Some(id) = message.get("id").cloned() else { continue };
-        write(&mut stdout, &handle(id, &message));
-    }
-}
-
-fn handle(id: Value, message: &Value) -> Value {
-    let method = message["method"].as_str().unwrap_or("");
-    let params = &message["params"];
-    match method {
-        "initialize" => {
-            if let Some(name) = params["clientInfo"]["name"].as_str() {
-                let _ = CLIENT.set(name.to_string());
-            }
-            let asked = params["protocolVersion"].as_str().unwrap_or(PROTOCOL);
-            let version = if asked <= PROTOCOL { asked } else { PROTOCOL };
-            result(
-                id,
-                json!({
-                    "protocolVersion": version,
-                    "capabilities": { "tools": {} },
-                    "serverInfo": { "name": "polishcast", "version": env!("CARGO_PKG_VERSION") },
-                    "instructions": format!("{INSTRUCTIONS} {}", desktop_kit::library::mcp::INSTRUCTIONS),
-                }),
-            )
-        }
-        "ping" => result(id, json!({})),
-        "tools/list" => result(id, json!({ "tools": with_library(tools()) })),
-        "tools/call" => {
-            let name = params["name"].as_str().unwrap_or("");
-            let args = &params["arguments"];
-            let answer = desktop_kit::library::mcp::call(name, args).unwrap_or_else(|| call(name, args));
-            let (text, is_error) = match answer {
-                Ok(value) => (pretty(&value), false),
-                Err(why) => (why, true),
-            };
-            result(id, json!({ "content": [{ "type": "text", "text": text }], "isError": is_error }))
-        }
-        _ => error(id, -32601, &format!("no method {method}")),
-    }
-}
-
-/// The app's tools, then the media library's, which every Mayorana app serves alike.
-fn with_library(mut tools: Value) -> Value {
-    if let Some(list) = tools.as_array_mut() {
-        list.extend(desktop_kit::library::mcp::tools());
-    }
-    tools
-}
-
-fn write(stdout: &mut std::io::Stdout, reply: &Value) {
-    // One message per line, and nothing else ever on stdout: the client reads it as the
-    // protocol, so a stray print is a corrupt message.
-    let mut bytes = serde_json::to_vec(reply).unwrap_or_default();
-    bytes.push(b'\n');
-    let _ = stdout.write_all(&bytes);
-    let _ = stdout.flush();
-}
-
-fn result(id: Value, result: Value) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "result": result })
-}
-
-fn error(id: Value, code: i64, message: &str) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
-}
-
-/// A tool result as the client reads it: compact, with no null fields. It
-/// stays in the client's context for the rest of the conversation, so every
-/// byte here is paid for again on each later turn.
-fn pretty(value: &Value) -> String {
-    serde_json::to_string(&without_nulls(value.clone())).unwrap_or_default()
-}
-
-fn without_nulls(value: Value) -> Value {
-    match value {
-        Value::Object(map) => {
-            Value::Object(map.into_iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k, without_nulls(v))).collect())
-        }
-        Value::Array(items) => Value::Array(items.into_iter().map(without_nulls).collect()),
-        other => other,
-    }
+    SERVER.serve(call);
 }
 
 // ── Tool definitions ─────────────────────────────────────────────────────────────────────
