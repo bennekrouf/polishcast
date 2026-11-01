@@ -33,21 +33,10 @@ use std::sync::OnceLock;
 const PROTOCOL: &str = "2025-06-18";
 
 const INSTRUCTIONS: &str = "PolishCast turns screen recordings into polished videos: the camera zooms in where \
-the person clicked, the cursor is redrawn smooth, and the recording sits on a background with padding, rounded \
-corners and a shadow. Each recording is a take, named by its folder; list_takes gives them, newest first. \
-get_take shows a take's zooms, clips and cuts, style and length. set_zooms edits the zooms (or suggests them \
-again from the clicks), set_clips splits the recording and leaves parts out, set_blanks cuts the pauses where \
-nobody speaks, set_style changes the look, the frame's shape, the playback speed and whether background \
-noise is taken out of the voice. Times are seconds of the recording. export writes an MP4 or a GIF next to the take's folder; the free version exports 10 different \
-takes. Recording: start_recording records the screen, a display, a window or a region (list_sources gives \
-their ids), after a countdown, until stop_recording, which saves it as a take with zooms suggested from its \
-clicks; recording_status says what is being recorded, cancel_recording throws it away. The menu bar shows the \
-recording, and the person can stop it there at any time. The person can turn recording from here off in \
-PolishCast's MCP window; the recording tools then say how to turn it back on. A demo: start_recording, drive the app being \
-shown, stop_recording, set_zooms with suggest, export. transcribe writes the take's transcript with api0 on the \
-licence's AI credits and finds its chapters; get_transcript reads it (text, SRT, VTT or chapters), set_chapters \
-changes them; export with captions writes caption files or burns them in; send_to_publishkit opens PublishKit's \
-Repurpose with an exported video and its captions, for a blog draft and social posts. \
+the person clicked, the cursor is redrawn smooth, and the recording sits on a styled background. Each recording \
+is a take: a take argument is its name as list_takes gives it (its folder's name) or its folder's absolute path. \
+Times are seconds of the recording. A demo: start_recording, drive the app being shown, stop_recording, \
+set_zooms with suggest, export. \
 Before calling these tools, read the polishcast skill if one is available: it has the confirmation \
 rules, defaults and report layouts that these instructions leave out.";
 
@@ -143,7 +132,8 @@ fn without_nulls(value: Value) -> Value {
 // ── Tool definitions ─────────────────────────────────────────────────────────────────────
 
 fn tools() -> Value {
-    let take_arg = json!({ "type": "string", "description": "The take's name, as list_takes gives it (its folder's name), or its folder's absolute path." });
+    // What a take argument is is said once, in the instructions, not in every tool.
+    let take_arg = json!({ "type": "string" });
     let indices = json!({ "type": "array", "items": { "type": "integer", "minimum": 1 } });
     let zoom = json!({
         "type": "object",

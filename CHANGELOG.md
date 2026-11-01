@@ -28,6 +28,13 @@ user sees in the update prompt should all be accounted for.
   open anything in the app that made it; a click on a PublishKit draft opens it
   in PublishKit.
 
+### Changed
+
+- Using PolishCast from Claude, Codex or another agent takes less of the agent's
+  context on every message, including ones that have nothing to do with
+  PolishCast: its instructions are a few lines, and what a setting every tool
+  takes means is said once rather than in each tool.
+
 ## [0.1.44] - 2026-10-31
 
 ### Added
