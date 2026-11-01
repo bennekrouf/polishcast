@@ -3552,7 +3552,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast"
-version = "0.1.44"
+version = "0.1.45"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3578,7 +3578,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-capture"
-version = "0.1.44"
+version = "0.1.45"
 dependencies = [
  "anyhow",
  "cpal",
@@ -3592,7 +3592,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-core"
-version = "0.1.44"
+version = "0.1.45"
 dependencies = [
  "desktop-kit",
  "serde",
@@ -3601,7 +3601,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-export"
-version = "0.1.44"
+version = "0.1.45"
 dependencies = [
  "anyhow",
  "dirs",
@@ -3616,7 +3616,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-render"
-version = "0.1.44"
+version = "0.1.45"
 dependencies = [
  "image",
  "polishcast-core",
@@ -3626,7 +3626,7 @@ dependencies = [
 
 [[package]]
 name = "polishcast-transcribe"
-version = "0.1.44"
+version = "0.1.45"
 dependencies = [
  "anyhow",
  "desktop-kit",
