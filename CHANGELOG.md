@@ -16,6 +16,12 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- Build and packaging only — no user-visible change.
+
 ## [0.1.47] - 2026-11-01
 
 ### Added
