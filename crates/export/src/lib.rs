@@ -205,7 +205,21 @@ pub fn ensure_ffmpeg(progress: &mut dyn FnMut(f32), cancelled: &dyn Fn() -> bool
 
 /// Exports the take in `dir` to `out`. Removes `out` again if it fails or is cancelled.
 pub fn export(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: &AtomicBool) -> Result<()> {
-    let result = run(dir, out, settings, progress, cancel);
+    let project = Project::load(&dir.join(take::PROJECT)).context("Reading the project")?;
+    export_project(dir, project, out, settings, progress, cancel)
+}
+
+/// Exports the take in `dir` as `project` has it rather than as it is saved: a clip of it, in
+/// another shape, leaving the take's own edit as it is.
+pub fn export_project(
+    dir: &Path,
+    project: Project,
+    out: &Path,
+    settings: Settings,
+    progress: &Progress,
+    cancel: &AtomicBool,
+) -> Result<()> {
+    let result = run(dir, project, out, settings, progress, cancel);
     if result.is_err() {
         let _ = std::fs::remove_file(out);
         for file in caption_files(out) {
@@ -215,7 +229,14 @@ pub fn export(dir: &Path, out: &Path, settings: Settings, progress: &Progress, c
     result
 }
 
-fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: &AtomicBool) -> Result<()> {
+fn run(
+    dir: &Path,
+    project: Project,
+    out: &Path,
+    settings: Settings,
+    progress: &Progress,
+    cancel: &AtomicBool,
+) -> Result<()> {
     let ffmpeg = if let Some(path) = ffmpeg() {
         path
     } else {
@@ -230,7 +251,6 @@ fn run(dir: &Path, out: &Path, settings: Settings, progress: &Progress, cancel: 
         }
         got?
     };
-    let project = Project::load(&dir.join(take::PROJECT)).context("Reading the project")?;
     let events: EventLog =
         std::fs::read(dir.join(take::EVENTS)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     let screen = dir.join(take::SCREEN);

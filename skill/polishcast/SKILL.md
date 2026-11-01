@@ -93,6 +93,12 @@ also on credits). `export` with `captions: files` writes `.srt`, `.vtt` and
 `.chapters.txt` beside the MP4; `burned` also draws the captions into the
 picture. `send_to_publishkit` opens PublishKit's Repurpose with an export that
 has captions; nothing is written there until the user confirms in PublishKit.
+`export_clip` writes one clip of a take as an MP4, vertical with burned
+captions by default, without changing the take: `start` and `end` are seconds
+of an exported video (pass that export as `video`, as PublishKit's Repurpose
+drafts name it in `repurposed_from`). The media library tools (`list_media`,
+`calendar`, `plan_media`, `fulfil_plan`, `set_media_*`) are the same as in
+PublishKit and TrackCut.
 
 ## How to report back
 

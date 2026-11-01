@@ -27,6 +27,16 @@ user sees in the update prompt should all be accounted for.
   see what is coming out and when. Set a status or tags by hand, search, or
   open anything in the app that made it; a click on a PublishKit draft opens it
   in PublishKit.
+- Clips for TikTok, Reels and Shorts, from Claude: one of the clips
+  PublishKit's Repurpose suggests is exported as a vertical video with the
+  captions drawn in, without changing your take's edit. Claude then attaches
+  it to its draft in PublishKit, and the library links the take to it.
+- Plan ahead in the library: Plan… puts a video, audio or post you mean to
+  make on the calendar, with its outline or script. Once it is made, Claude
+  can hand the idea and its notes over to the take, recording or post.
+- Claude can now use the media library too: search it, read the calendar of
+  any week, plan an idea, and set an item's status, tags or notes. The same
+  in PolishCast, TrackCut and PublishKit.
 
 ### Changed
 
