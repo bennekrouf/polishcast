@@ -68,9 +68,7 @@ struct Doc {
     seen: Signal<Option<std::time::SystemTime>>,
 }
 
-fn modified(path: &std::path::Path) -> Option<std::time::SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
-}
+use desktop_kit::library::modified;
 
 impl Doc {
     /// One undoable edit.
