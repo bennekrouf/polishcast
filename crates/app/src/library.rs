@@ -3,7 +3,7 @@
 //! show it too. All of it read from the takes' folders, so it is right however a take changed.
 
 use crate::takes;
-use desktop_kit::library::{self as shared, Item, Kind, Role, Status};
+use desktop_kit::library::{self as shared, modified, Item, Kind, Role, Status};
 use polishcast_core::take;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -50,10 +50,6 @@ pub fn item_of(dir: &Path) -> Option<Item> {
     Some(item)
 }
 
-fn modified(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
-}
-
 /// Writes the take in `dir` to the library as it is now; takes it out when the folder is gone.
 pub fn sync_take(dir: &Path) {
     match item_of(dir) {
@@ -95,11 +91,7 @@ pub fn sync_all() {
 
 /// Changes whenever a take or an export is added, removed or changes beside the others.
 pub fn stamp() -> Vec<(PathBuf, Option<SystemTime>)> {
-    let mut stamp: Vec<(PathBuf, Option<SystemTime>)> = std::fs::read_dir(takes::library())
-        .map(|r| r.filter_map(|e| e.ok()).map(|e| (e.path(), e.metadata().and_then(|m| m.modified()).ok())).collect())
-        .unwrap_or_default();
-    stamp.sort();
-    stamp
+    shared::folder_stamp(&takes::library())
 }
 
 #[cfg(test)]
