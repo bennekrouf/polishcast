@@ -424,8 +424,6 @@ button kbd { margin-left: 6px; }
 }
 .timeline .clip.selected { outline: 2px solid var(--selected); outline-offset: -1px; }
 
-.mcp-modal { width: min(620px, calc(100vw - 32px)); }
-.mcp-modal h3 { margin: 6px 0 0; font-size: 13px; }
 .mcp-snippet-wrap { position: relative; }
 .mcp-snippet {
   margin: 0; padding: 10px 76px 10px 12px; border-radius: 6px;
@@ -434,8 +432,7 @@ button kbd { margin-left: 6px; }
   white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text;
 }
 .mcp-copy { position: absolute; top: 6px; right: 6px; padding: 2px 10px; font-size: 12px; }
-.mcp-path, .mcp-note code { word-break: break-all; }
-.mcp-note { padding: 9px 11px; border-radius: 6px; background: var(--panel); }
+
 
 /* ffmpeg missing: the command to install it, under the error */
 .ffmpeg-help { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }

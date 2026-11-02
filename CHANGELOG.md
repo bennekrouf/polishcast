@@ -16,6 +16,18 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- The "Use PolishCast from Claude or Codex" window now looks and reads the same
+  as in the other Mayorana apps, with a copy button on every step, and Escape
+  closes it.
+- + Music opens a picker of the songs you already have: tracks cut in
+  TrackCut and songs you used before, newest and unused first, instead of
+  Finder. Choose from the disk with the link at the bottom; that song is then
+  offered next time too.
+
 ## [0.1.51] - 2026-11-02
 
 ### Changed

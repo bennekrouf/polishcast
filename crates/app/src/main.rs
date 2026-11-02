@@ -10,7 +10,7 @@ mod library;
 mod licence;
 mod limits;
 mod mcp;
-mod media_server;
+use desktop_kit::media as media_server;
 mod old_app;
 mod platform;
 mod remote;
