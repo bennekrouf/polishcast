@@ -24,7 +24,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 mod panels;
 use panels::*;
+mod actions;
 mod export;
+mod media;
 mod transcript;
 pub(crate) use export::*;
 use transcript::TranscriptPanel;
@@ -178,7 +180,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
             doc.reload_if_changed();
         }
     });
-    let mut time = use_signal(|| 0.0f64);
+    let time = use_signal(|| 0.0f64);
     let loudness = use_signal({
         let dir = dir.clone();
         move || match std::fs::read(dir.join(take::LOUDNESS)).ok().and_then(|b| serde_json::from_slice(&b).ok()) {
@@ -186,7 +188,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
             None => Measure::Unknown,
         }
     });
-    let mut playing = use_signal(|| false);
+    let playing = use_signal(|| false);
     let mut selected = use_signal(|| Option::<usize>::None);
     // A clip picked on the timeline (start and end, in recording time); only one of a zoom and
     // a clip is selected at a time.
@@ -204,256 +206,15 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
     });
     let mut in_app = use_signal(|| false);
     let mut failed = use_signal(|| false);
-    // The background picture, if any, served next to the video: its file name and URL.
-    let mut picture = use_signal(|| Option::<(String, String)>::None);
-    use_effect({
-        let dir = dir.clone();
-        move || {
-            let name = match &doc.project.read().style.background {
-                Background::Image(name) => Some(name.clone()),
-                _ => None,
-            };
-            let current = picture.peek().clone();
-            if current.as_ref().map(|c| &c.0) != name.as_ref() {
-                if let Some((_, url)) = current {
-                    media_server::unpublish(&url);
-                }
-                picture.set(name.and_then(|n| media_server::share(&dir.join(&n)).map(|url| (n, url))));
-            }
-        }
-    });
-    // The songs, served next to the video by file name, and where each piece plays.
-    let mut songs = use_signal(HashMap::<String, String>::new);
-    use_effect({
-        let dir = dir.clone();
-        move || {
-            let files: Vec<String> = doc.project.read().music.iter().map(|m| m.file.clone()).collect();
-            for file in files {
-                if !songs.peek().contains_key(&file) {
-                    if let Some(url) = media_server::share(&dir.join(&file)) {
-                        songs.write().insert(file, url);
-                    }
-                }
-            }
-        }
-    });
-    // Lowering the music under the voice needs the recording's loudness, and so does knowing
-    // whether there's any sound to take noise out of: measured once, and again when Try again
-    // puts it back to Unknown.
-    use_effect({
-        let dir = dir.clone();
-        move || {
-            let wanted = {
-                let p = doc.project.read();
-                p.duck.is_some() || p.denoise.is_some()
-            };
-            if wanted && *loudness.read() == Measure::Unknown {
-                let (dir, mut loudness) = (dir.clone(), loudness);
-                loudness.set(Measure::Measuring);
-                spawn(async move {
-                    loudness.set(match tokio::task::spawn_blocking(move || measure(&dir)).await {
-                        Ok(Ok(Some(l))) => Measure::Ready(Rc::new(l)),
-                        Ok(Ok(None)) => Measure::Silent,
-                        Ok(Err(e)) => Measure::failed(&e),
-                        Err(e) => Measure::Failed(e.to_string()),
-                    });
-                });
-            }
-        }
-    });
-    use_effect(move || {
-        let project = doc.project.read();
-        let urls = songs.read();
-        let list: Vec<serde_json::Value> = project
-            .placed_music()
-            .into_iter()
-            .filter_map(|m| {
-                let url = urls.get(&project.music[m.index].file)?;
-                let url = if in_app() { media_server::in_app_path(url) } else { url.clone() };
-                let mut v = serde_json::to_value(m).ok()?;
-                v["url"] = url.into();
-                Some(v)
-            })
-            .collect();
-        let duck = match (project.duck, &*loudness.read()) {
-            (Some(level), Measure::Ready(l)) => serde_json::json!({
-                "level": level,
-                "ramp": music::DUCK_RAMP,
-                "spans": project.speaking(l),
-            }),
-            _ => serde_json::Value::Null,
-        };
-        document::eval(&format!("window.sv && window.sv.setMusic({}, {duck})", serde_json::Value::from(list)));
-    });
-    use_asset_handler("media", move |request, responder| {
-        std::thread::spawn(move || responder.respond(media_server::in_app_response(&request)));
-    });
+    let picture = media::use_served_media(&dir, doc, loudness, in_app);
 
-    // The frame track, recomputed whenever the project changes.
-    let track = use_memo({
-        let events = events.clone();
-        move || {
-            let scene = Scene::new(doc.project.read().clone(), &events);
-            let (w, h) = scene.output_size(TRACK_LONG_SIDE);
-            serde_json::to_string(&scene.track(TRACK_FPS, w, h)).unwrap_or_default()
-        }
-    });
-    use_hook(|| {
-        document::eval(PREVIEW_JS);
-    });
-    use_effect(move || {
-        document::eval(&format!("window.sv && window.sv.setTrack({})", track()));
-    });
+    media::use_preview_track(doc, events.clone());
 
-    let add_zoom = use_callback({
-        let events = events.clone();
-        move |()| {
-            let t = time();
-            let (x, y) = events.cursor_at(t).unwrap_or((0.5, 0.5));
-            let duration = doc.project.peek().duration;
-            let z = Zoom { start: t, end: (t + NEW_ZOOM_SECS).min(duration), scale: 1.8, x, y };
-            let mut added = None;
-            doc.change(|p| added = zoom::insert(&mut p.zooms, z));
-            match added {
-                Some(i) => selected.set(Some(i)),
-                None => {
-                    let mut error = doc.error;
-                    error.set(Some("There's no room for a zoom here: move the playhead to a gap.".into()));
-                }
-            }
-        }
-    });
+    let sel = actions::Sel { time, selected, selected_clip, selected_music };
+    let acts = actions::use_actions(&dir, doc, events.clone(), sel);
+    let actions::Actions { add_zoom, split_here, add_music, .. } = acts;
 
-    // Splits the recording at the playhead.
-    let split_here = use_callback(move |()| {
-        let t = time();
-        let mut added = false;
-        doc.change(|p| added = clips::split(&mut p.splits, p.duration, t));
-        if !added {
-            let mut error = doc.error;
-            error.set(Some("Too close to the start, the end or another split to split here.".into()));
-        }
-    });
-    // Leaves out everything before the playhead (`before`), or everything after it.
-    let trim = use_callback(move |before: bool| {
-        let t = time();
-        doc.change(|p| {
-            clips::split(&mut p.splits, p.duration, t);
-            let stretch = if before { (0.0, t) } else { (t, p.duration) };
-            if stretch.1 - stretch.0 > 1e-6 {
-                clips::remove(&mut p.removed, stretch);
-            }
-        });
-        selected_clip.set(None);
-    });
-
-    // A song chosen: it starts at the playhead (a piece playing there stops).
-    let add_music = use_callback({
-        let dir = dir.clone();
-        move |from: PathBuf| {
-            let mut error = doc.error;
-            let file = match adopt_file(&dir, &from, "music") {
-                Ok(file) => file,
-                Err(e) => return error.set(Some(format!("Can't use that song: {e}"))),
-            };
-            let name = from.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| file.clone());
-            let t = time();
-            let m =
-                Music { file, name, start: t, end: f64::INFINITY, from: 0.0, volume: music::VOLUME, fade: music::FADE };
-            let mut added = None;
-            doc.change(|p| added = music::insert(&mut p.music, m, p.duration));
-            match added {
-                Some(i) => {
-                    selected.set(None);
-                    selected_clip.set(None);
-                    selected_music.set(Some(i));
-                }
-                None => error.set(Some("There's no room for music here: move the playhead.".into())),
-            }
-        }
-    });
-    // M: the music stops at the playhead if it's playing there; otherwise the last song before
-    // it carries on from where it stopped.
-    let toggle_music = use_callback(move |()| {
-        let t = time();
-        let (playing, last) = {
-            let p = doc.project.peek();
-            let last =
-                p.music.iter().enumerate().rev().find(|(_, m)| m.end <= t).or(p.music.iter().enumerate().next_back());
-            let placed = p.placed_music();
-            let last = last.map(|(i, m)| {
-                let played = placed.iter().find(|pl| pl.index == i).map_or(0.0, |pl| pl.until - pl.at);
-                let from = if m.end <= t { m.from + played } else { 0.0 };
-                Music { start: t, end: f64::INFINITY, from, ..m.clone() }
-            });
-            (music::at(&p.music, t), last)
-        };
-        let mut error = doc.error;
-        if let Some(i) = playing {
-            doc.change(|p| {
-                let start = p.music[i].start;
-                if t - start < music::MIN_SECS {
-                    p.music.remove(i);
-                } else {
-                    music::set_bounds(&mut p.music, i, start, t, p.duration);
-                }
-            });
-            selected_music.set(None);
-        } else if let Some(m) = last {
-            let mut added = None;
-            doc.change(|p| added = music::insert(&mut p.music, m, p.duration));
-            if added.is_none() {
-                error.set(Some("There's no room for music here: move the playhead.".into()));
-            }
-        } else {
-            error.set(Some("Choose a song with + Music first.".into()));
-        }
-    });
-
-    // Ticks and keys from the preview script.
-    use_future(move || async move {
-        let mut channel = document::eval("window.sv.send = (m) => dioxus.send(m); await new Promise(() => {});");
-        while let Ok(msg) = channel.recv::<Msg>().await {
-            match msg {
-                Msg::Tick { t, playing: p } => {
-                    time.set(t);
-                    playing.set(p);
-                }
-                Msg::Key { key, cmd, shift } => match (key.as_str(), cmd, shift) {
-                    ("z", true, false) => doc.undo(),
-                    ("z" | "Z", true, true) => doc.redo(),
-                    ("z", false, false) => add_zoom(()),
-                    ("s", false, false) => split_here(()),
-                    ("m", false, false) => toggle_music(()),
-                    ("[", false, _) => trim(true),
-                    ("]", false, _) => trim(false),
-                    ("Backspace" | "Delete", false, _) => {
-                        if let Some(i) = selected.take() {
-                            doc.change(|p| {
-                                if i < p.zooms.len() {
-                                    p.zooms.remove(i);
-                                }
-                            });
-                        } else if let Some(i) = selected_music.take() {
-                            doc.change(|p| {
-                                if i < p.music.len() {
-                                    p.music.remove(i);
-                                }
-                            });
-                        } else if let Some(clip) = *selected_clip.peek() {
-                            doc.change(|p| toggle_clip(p, clip));
-                        }
-                    }
-                    ("Escape", false, _) => {
-                        selected.set(None);
-                        selected_clip.set(None);
-                        selected_music.set(None);
-                    }
-                    _ => {}
-                },
-            }
-        }
-    });
+    actions::use_preview_messages(doc, sel, playing, acts);
 
     let project = doc.project.read();
     let duration = project.duration.max(0.001);
