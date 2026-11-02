@@ -25,9 +25,9 @@ body {
   --kit-accent: var(--accent);
 }
 /* Record, in the header: red, and pulsing while it records. */
-.kit-header .kit-btn.kit-record { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; padding: 0 14px; }
-.kit-header .kit-btn.kit-record:hover { background: color-mix(in srgb, var(--accent) 85%, #000); }
-.kit-header .kit-btn.kit-record.kit-on { animation: pulse 1.2s ease-in-out infinite; }
+.kit-toolbar .kit-btn.kit-record { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; padding: 0 14px; }
+.kit-toolbar .kit-btn.kit-record:hover { background: color-mix(in srgb, var(--accent) 85%, #000); }
+.kit-toolbar .kit-btn.kit-record.kit-on { animation: pulse 1.2s ease-in-out infinite; }
 .kit-record-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
 .kit-record.kit-on .kit-record-dot { border-radius: 1px; }
 .sidebar header h2 { font-size: 13px; margin: 0; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }

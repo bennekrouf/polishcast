@@ -30,7 +30,9 @@ pub(super) fn TranscriptPanel(dir: PathBuf) -> Element {
     });
     let mut state = use_signal(|| State::Idle);
     let mut fraction = use_signal(|| 0.0f32);
-    let mut region = use_signal(|| AppSettings::load().ai_region);
+    // The app's settings, so this and the header's flag always agree.
+    let mut app_settings = use_context::<Signal<AppSettings>>();
+    let region = use_memo(move || app_settings.read().ai_region);
     let mut copied = use_signal(|| false);
 
     use_future({
@@ -211,10 +213,8 @@ pub(super) fn TranscriptPanel(dir: PathBuf) -> Element {
                         button {
                             class: if region() == r { "on" } else { "" },
                             onclick: move |_| {
-                                region.set(r);
-                                let mut s = AppSettings::load();
-                                s.ai_region = r;
-                                s.save();
+                                app_settings.write().ai_region = r;
+                                app_settings.peek().save();
                             },
                             "{r.shown()}"
                         }
