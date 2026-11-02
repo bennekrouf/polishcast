@@ -213,6 +213,9 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
     let sel = actions::Sel { time, selected, selected_clip, selected_music };
     let acts = actions::use_actions(&dir, doc, events.clone(), sel);
     let actions::Actions { add_zoom, split_here, add_music, .. } = acts;
+    // The music picker, while it is open.
+    let mut picking_music = use_signal(|| false);
+    let take_name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
 
     actions::use_preview_messages(doc, sel, playing, acts);
 
@@ -303,18 +306,12 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     button { onclick: move |_| split_here(()), title: "S — then click a clip to remove it", "Split" }
                     button { onclick: move |_| add_zoom(()), title: "Z", "+ Zoom" }
                     // A song starts at the playhead; M then stops and restarts it as the video plays.
-                    label { class: "button", title: "A song from the playhead. M stops it or starts it again there",
+                    // From the library first (TrackCut's tracks, songs added before); the disk
+                    // is a discreet link inside the picker.
+                    button {
+                        title: "A song from the playhead. M stops it or starts it again there",
+                        onclick: move |_| picking_music.set(true),
                         "+ Music"
-                        input {
-                            r#type: "file",
-                            accept: "audio/*,.mp3,.m4a,.wav,.aac,.flac",
-                            hidden: true,
-                            onchange: move |e| {
-                                if let Some(file) = e.files().into_iter().next() {
-                                    add_music(file.path());
-                                }
-                            },
-                        }
                     }
                     button { onclick: move |_| doc.undo(), title: "{platform::MOD}Z", "Undo" }
                     button { onclick: move |_| doc.redo(), title: "{platform::MOD}Shift+Z", "Redo" }
@@ -410,6 +407,21 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                 NoisePanel { doc, loudness }
                 TranscriptPanel { dir: dir.clone() }
                 ExportPanel { doc, dir: dir.clone() }
+            }
+            if picking_music() {
+                desktop_kit::ui::FilePicker {
+                    want: desktop_kit::library::pick::Want::new("polishcast", "Music for this video")
+                        .roles(&[desktop_kit::library::Role::Audio, desktop_kit::library::Role::Source])
+                        .extensions(&["mp3", "m4a", "wav", "aac", "flac"])
+                        .about(&take_name),
+                    on_pick: move |files: Vec<PathBuf>| {
+                        picking_music.set(false);
+                        if let Some(file) = files.into_iter().next() {
+                            add_music(file);
+                        }
+                    },
+                    on_close: move |_| picking_music.set(false),
+                }
             }
         }
     }
