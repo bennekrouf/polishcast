@@ -2,9 +2,9 @@
 
 use crate::editor::Editor;
 use crate::remote::{self, Asked, Op, Remote};
-use crate::settings::{Settings, SourceKind};
+use crate::settings::{AiRegion, Settings, SourceKind};
 use crate::{platform, takes};
-use desktop_kit::ui::{use_theme, Banners, Header, ProButton, ProWindow};
+use desktop_kit::ui::{use_theme, Banners, Header, ModelBadge, ProButton, ProWindow, SettingsWindow, Toolbar};
 use dioxus::desktop::tao::event::Event as TaoEvent;
 use dioxus::desktop::trayicon::menu::{Menu, MenuItem, PredefinedMenuItem};
 use dioxus::desktop::trayicon::{Icon, TrayIcon, TrayIconBuilder};
@@ -80,6 +80,7 @@ pub fn App() -> Element {
         dioxus::desktop::window().set_title(&crate::window_title(&pro.status.read()));
     });
     let mut mcp_open = use_context_provider(|| crate::mcp::McpOpen(Signal::new(false))).0;
+    let mut settings_open = use_signal(|| false);
     background::use_licence_check(pro);
     let tray = use_hook(|| std::rc::Rc::new(Tray::new()));
     // Small Video.app, left in Applications by the update that renamed the app.
@@ -259,24 +260,55 @@ pub fn App() -> Element {
     rsx! {
         style { {CSS} }
         Header {
-            theme,
+            on_settings: move |_| settings_open.set(true),
             on_mcp: move |_| mcp_open.set(true),
-            actions: rsx! {
-                button {
-                    class: if recording { "kit-btn kit-record kit-on" } else { "kit-btn kit-record" },
-                    disabled: status() == Status::Saving,
-                    onclick: move |_| toggle(true),
-                    span { class: "kit-record-dot" }
-                    "{label}"
+            model: rsx! {
+                ModelBadge {
+                    label: desktop_kit::region::find(settings().ai_region.id()).map_or("api0", |r| r.label).to_string(),
+                    region: Some(settings().ai_region.id()),
+                    title: "where api0 transcribes and names chapters \u{2014} click to change it",
+                    onclick: move |_| settings_open.set(true),
                 }
             },
             pro: rsx! { ProButton { pro: pro.kit(), hint: crate::licence::hint() } },
+        }
+        Toolbar {
             div { class: "kit-tabs",
                 for v in View::ALL {
                     button {
                         class: if view() == v { "kit-tab kit-on" } else { "kit-tab" },
                         onclick: move |_| view.set(v),
                         "{v.label()}"
+                    }
+                }
+            }
+            span { class: "kit-spacer" }
+            button {
+                class: if recording { "kit-btn kit-record kit-on" } else { "kit-btn kit-record" },
+                disabled: status() == Status::Saving,
+                onclick: move |_| toggle(true),
+                span { class: "kit-record-dot" }
+                "{label}"
+            }
+        }
+        if settings_open() {
+            SettingsWindow { theme, on_close: move |_| settings_open.set(false),
+                div { class: "kit-set-general",
+                    div { class: "kit-set-row",
+                        span { class: "kit-set-label", "AI region" }
+                        div { class: "kit-set-seg",
+                            for r in AiRegion::ALL {
+                                button {
+                                    class: if settings().ai_region == r { "kit-on" } else { "" },
+                                    title: "Where api0 transcribes and names chapters, on the licence's AI credits",
+                                    onclick: move |_| {
+                                        settings.write().ai_region = r;
+                                        settings.peek().save();
+                                    },
+                                    {desktop_kit::region::find(r.id()).map_or(r.id(), |x| x.label)}
+                                }
+                            }
+                        }
                     }
                 }
             }
