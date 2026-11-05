@@ -74,6 +74,7 @@ fn call(name: &str, args: &Value) -> Result<Value, String> {
 fn run(name: &str, args: &Value) -> Result<Value, String> {
     match name {
         "list_takes" => Ok(list()),
+        "import_video" => import_video(args),
         "get_take" => Take::from(args).map(|t| t.describe()),
         "set_zooms" => set_zooms(args),
         "set_clips" => set_clips(args),
@@ -102,3 +103,14 @@ fn ask(op: &str, args: &Value) -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests;
+
+/// Makes a take of an MP4 or MOV made elsewhere.
+fn import_video(args: &Value) -> Result<Value, String> {
+    let file = args["file"].as_str().ok_or("file is required: the video's absolute path")?;
+    let path = std::path::Path::new(file);
+    if !path.is_absolute() || !path.is_file() {
+        return Err(format!("no file at {file}: give the video's absolute path"));
+    }
+    let dir = crate::takes::import(path)?;
+    Take::from(&json!({ "take": dir.to_string_lossy() })).map(|t| t.describe())
+}

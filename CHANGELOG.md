@@ -16,6 +16,16 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- **Import video…** in the Recordings panel turns an MP4 or MOV made
+  elsewhere into a take. It gets the same background, frame shape, cuts,
+  speed, music and export as a recording, and Send to PublishKit works on it
+  too. There is no cursor to redraw or clicks to zoom on, so zooms are set by
+  hand.
+
 ## [0.1.61] - 2026-11-05
 
 ### Added
