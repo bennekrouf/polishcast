@@ -16,6 +16,15 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- On the Calendar, drag a recording or a planned idea to another day to move
+  it: the card follows the pointer and the day it will land on is outlined. Or
+  hover it and click ✎ (or right-click it) to type the new date and time.
+  Posts keep their date from PublishKit, so move them there.
+
 ## [0.1.60] - 2026-11-04
 
 ### Changed
