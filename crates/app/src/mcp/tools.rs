@@ -26,6 +26,14 @@ pub(super) fn tools() -> Value {
             "inputSchema": { "type": "object", "properties": {} },
         },
         {
+            "name": "import_video",
+            "description": "Makes a take of a video made elsewhere (MP4, MOV or M4V, by its absolute path): \
+                            it's copied into the library, with no cursor or clicks, so it takes a background, \
+                            frame shape, cuts, speed, music and zooms set by hand, then export and \
+                            send_to_publishkit as any take. Returns the new take as get_take does.",
+            "inputSchema": { "type": "object", "properties": { "file": { "type": "string" } }, "required": ["file"] },
+        },
+        {
             "name": "get_take",
             "description": "One take in full: its zooms, its clips (and which are left out), its blank cutting, \
                             its style, speed and frame shape, its noise reduction, and how many clicks were recorded.",
