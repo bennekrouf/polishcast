@@ -92,7 +92,7 @@ pub fn import(src: &Path) -> Result<PathBuf, String> {
     let name = (1..)
         .map(|n| if n == 1 { stem.clone() } else { format!("{stem} {n}") })
         .find(|n| check_name(n).is_ok())
-        .expect("some name is free");
+        .ok_or_else(|| format!("No free name for a take called \u{201c}{stem}\u{201d}"))?;
     let dir = new_named_dir(&name).map_err(|e| format!("Making the take's folder: {e}"))?;
     let written =
         std::fs::copy(src, dir.join(take::SCREEN)).map_err(|e| format!("Copying the video: {e}")).and_then(|_| {
