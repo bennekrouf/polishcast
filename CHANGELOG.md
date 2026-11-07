@@ -26,6 +26,12 @@ user sees in the update prompt should all be accounted for.
   too. There is no cursor to redraw or clicks to zoom on, so zooms are set by
   hand.
 
+## [0.1.62] - 2026-11-07
+
+### Changed
+
+- Build and packaging only — no user-visible change.
+
 ## [0.1.61] - 2026-11-05
 
 ### Added
