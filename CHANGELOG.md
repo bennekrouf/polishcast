@@ -27,48 +27,6 @@ user sees in the update prompt should all be accounted for.
 
 ## [0.1.60] - 2026-11-04
 
-## [0.1.59] - 2026-11-04
-
-### Changed
-
-- The header has no gear any more: the flag already opens Settings, so the
-  gear beside it was a second button for the same window.
-
-### Fixed
-
-- Esc closes Settings even after a click on its text, not only right after
-  it opens.
-
-## [0.1.58] - 2026-11-03
-
-### Changed
-
-- Build and packaging only — no user-visible change.
-
-## [0.1.57] - 2026-11-02
-
-### Changed
-
-- Build and packaging only — no user-visible change.
-
-## [0.1.56] - 2026-11-02
-
-### Changed
-
-- Build and packaging only — no user-visible change.
-
-## [0.1.55] - 2026-11-02
-
-### Changed
-
-- Build and packaging only — no user-visible change.
-
-## [0.1.54] - 2026-11-02
-
-### Changed
-
-- Build and packaging only — no user-visible change.
-
 ### Changed
 
 - The header has no gear any more: the flag already opens Settings, so the
