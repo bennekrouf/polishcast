@@ -75,6 +75,67 @@ pub fn check_name(name: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
+/// Makes a take of a video made elsewhere (an MP4 or MOV): copies it into a new folder named
+/// after the file, and writes a project for it. With no pointer recorded there is no cursor to
+/// redraw and no zoom to suggest, but the background, frame, cuts, speed, music and export all
+/// work as for a recording. Returns the new take's folder.
+pub fn import(src: &Path) -> Result<PathBuf, String> {
+    let ffmpeg = polishcast_export::ensure_ffmpeg(&mut |_| {}, &|| false).map_err(|e| e.to_string())?;
+    let (duration, width, height) = probe(&ffmpeg, src)?;
+    let stem = src.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Imported".into());
+    let stem: String = stem
+        .chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') { '-' } else { c })
+        .collect();
+    let stem = stem.trim().trim_start_matches('.').chars().take(90).collect::<String>();
+    let stem = if stem.is_empty() { "Imported".to_string() } else { stem };
+    let name = (1..)
+        .map(|n| if n == 1 { stem.clone() } else { format!("{stem} {n}") })
+        .find(|n| check_name(n).is_ok())
+        .ok_or_else(|| format!("No free name for a take called \u{201c}{stem}\u{201d}"))?;
+    let dir = new_named_dir(&name).map_err(|e| format!("Making the take's folder: {e}"))?;
+    let written =
+        std::fs::copy(src, dir.join(take::SCREEN)).map_err(|e| format!("Copying the video: {e}")).and_then(|_| {
+            let mut project = Project::new(duration, width, height, &EventLog::default());
+            project.style.click_effect = false;
+            project.save(&dir.join(take::PROJECT)).map_err(|e| format!("Writing the project: {e}"))
+        });
+    if let Err(e) = written {
+        let _ = std::fs::remove_dir_all(&dir);
+        return Err(e);
+    }
+    Ok(dir)
+}
+
+/// A video's length in seconds and its picture's size, from what ffmpeg says of it.
+fn probe(ffmpeg: &Path, file: &Path) -> Result<(f64, u32, u32), String> {
+    let out = polishcast_export::tools::command(ffmpeg)
+        .arg("-hide_banner")
+        .arg("-i")
+        .arg(file)
+        .output()
+        .map_err(|e| format!("Running ffmpeg: {e}"))?;
+    parse_probe(&String::from_utf8_lossy(&out.stderr)).ok_or_else(|| "That file isn't a video ffmpeg can read.".into())
+}
+
+fn parse_probe(text: &str) -> Option<(f64, u32, u32)> {
+    let d = text.split("Duration: ").nth(1)?.split(',').next()?.trim();
+    let mut hms = d.split(':').map(|p| p.parse::<f64>().ok());
+    let duration = hms.next()?? * 3600.0 + hms.next()?? * 60.0 + hms.next()??;
+    let video = text.lines().find(|l| l.contains("Stream #") && l.contains("Video:"))?;
+    let (width, height) = video.split([',', ' ']).find_map(|w| {
+        let (a, b) = w.split_once('x')?;
+        Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?))
+    })?;
+    // A phone video recorded upright is stored sideways, with a rotation to apply.
+    let turned = text.contains("rotation of -90")
+        || text.contains("rotation of 90")
+        || text.contains("rotate          : 90")
+        || text.contains("rotate          : 270");
+    let (width, height) = if turned { (height, width) } else { (width, height) };
+    (duration > 0.0 && width > 0 && height > 0).then_some((duration, width, height))
+}
+
 /// Writes the take's project, with zooms suggested from its clicks.
 pub fn create_project(t: &Take) -> std::io::Result<Project> {
     let events: EventLog =
@@ -228,5 +289,17 @@ mod tests {
         recased(&base, "Polishcast", "PolishCast");
         assert!(base.join("PolishCast").join("take").is_dir());
         std::fs::remove_dir_all(base).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod import_tests {
+    #[test]
+    fn ffmpeg_says_how_long_and_how_big() {
+        let text = "  Duration: 00:01:02.50, start: 0.000000, bitrate: 900 kb/s\n  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080 [SAR 1:1 DAR 16:9], 30 fps\n";
+        assert_eq!(super::parse_probe(text), Some((62.5, 1920, 1080)));
+        let upright = format!("{text}      displaymatrix: rotation of -90.00 degrees\n");
+        assert_eq!(super::parse_probe(&upright), Some((62.5, 1080, 1920)));
+        assert_eq!(super::parse_probe("not a video"), None);
     }
 }

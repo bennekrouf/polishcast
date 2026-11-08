@@ -16,6 +16,56 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- **Import video…** in the Recordings panel turns an MP4 or MOV made
+  elsewhere into a take. It gets the same background, frame shape, cuts,
+  speed, music and export as a recording, and Send to PublishKit works on it
+  too. There is no cursor to redraw or clicks to zoom on, so zooms are set by
+  hand.
+
+## [0.1.62] - 2026-11-07
+
+### Changed
+
+- Build and packaging only — no user-visible change.
+
+## [0.1.61] - 2026-11-05
+
+### Added
+
+- On the Calendar, drag a recording or a planned idea to another day to move
+  it: the card follows the pointer and the day it will land on is outlined. Or
+  hover it and click ✎ (or right-click it) to type the new date and time.
+  Posts keep their date from PublishKit, so move them there.
+
+## [0.1.60] - 2026-11-04
+
+### Changed
+
+- The header has no gear any more: the flag already opens Settings, so the
+  gear beside it was a second button for the same window.
+
+### Fixed
+
+- Esc closes Settings even after a click on its text, not only right after
+  it opens.
+
+## [0.1.58] - 2026-11-03
+
+### Changed
+
+- Build and packaging only — no user-visible change.
+
+## [0.1.57] - 2026-11-02
+
+### Changed
+
+- Build and packaging only — no user-visible change.
+
+## [0.1.56] - 2026-11-02
 ## [0.1.62] - 2026-11-07
 
 ### Changed

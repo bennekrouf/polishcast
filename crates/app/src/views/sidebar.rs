@@ -32,6 +32,36 @@ pub(super) fn sidebar(
             header {
                 h2 { "Recordings" }
                 div { class: "header-actions",
+                    label {
+                        class: "button link",
+                        title: "Import an MP4 or MOV made elsewhere, to give it a background, cuts, speed and music and export it",
+                        "Import video…"
+                        input {
+                            r#type: "file",
+                            accept: "video/mp4,video/quicktime,.mp4,.mov,.m4v",
+                            hidden: true,
+                            onchange: move |e| {
+                                let Some(file) = e.files().into_iter().next() else { return };
+                                let path = file.path();
+                                let (mut library, mut selected, mut error, mut notice) = (library, selected, error, notice);
+                                notice.set(Some("Importing the video…".into()));
+                                spawn(async move {
+                                    let got = tokio::task::spawn_blocking(move || takes::import(&path))
+                                        .await
+                                        .unwrap_or_else(|e| Err(e.to_string()));
+                                    notice.set(None);
+                                    match got {
+                                        Ok(dir) => {
+                                            library.set(takes::list());
+                                            selected.set(Some(dir));
+                                            view.set(View::Takes);
+                                        }
+                                        Err(e) => error.set(Some(format!("Can't import that video: {e}"))),
+                                    }
+                                });
+                            },
+                        }
+                    }
                     button {
                         class: "panel-toggle",
                         title: "Hide recordings",
