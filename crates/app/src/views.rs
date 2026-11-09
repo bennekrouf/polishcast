@@ -81,6 +81,7 @@ pub fn App() -> Element {
     });
     let mut mcp_open = use_context_provider(|| crate::mcp::McpOpen(Signal::new(false))).0;
     let mut settings_open = use_signal(|| false);
+    let closed_regions = desktop_kit::ui::use_closed_regions();
     background::use_licence_check(pro);
     let tray = use_hook(|| std::rc::Rc::new(Tray::new()));
     // Small Video.app, left in Applications by the update that renamed the app.
@@ -300,7 +301,8 @@ pub fn App() -> Element {
                             for r in AiRegion::ALL {
                                 button {
                                     class: if settings().ai_region == r { "kit-on" } else { "" },
-                                    title: "Where api0 transcribes and names chapters, on the licence's AI credits",
+                                    disabled: closed_regions.read().iter().any(|c| c == r.id()),
+                                    title: if closed_regions.read().iter().any(|c| c == r.id()) { desktop_kit::region::COMING_SOON } else { "Where api0 transcribes and names chapters, on the licence's AI credits" },
                                     onclick: move |_| {
                                         settings.write().ai_region = r;
                                         settings.peek().save();

@@ -33,6 +33,7 @@ pub(super) fn TranscriptPanel(dir: PathBuf) -> Element {
     // The app's settings, so this and the header's flag always agree.
     let mut app_settings = use_context::<Signal<AppSettings>>();
     let region = use_memo(move || app_settings.read().ai_region);
+    let closed_regions = desktop_kit::ui::use_closed_regions();
     let mut copied = use_signal(|| false);
 
     use_future({
@@ -212,6 +213,8 @@ pub(super) fn TranscriptPanel(dir: PathBuf) -> Element {
                     for r in AiRegion::ALL {
                         button {
                             class: if region() == r { "on" } else { "" },
+                            disabled: closed_regions.read().iter().any(|c| c == r.id()),
+                            title: if closed_regions.read().iter().any(|c| c == r.id()) { desktop_kit::region::COMING_SOON } else { "" },
                             onclick: move |_| {
                                 app_settings.write().ai_region = r;
                                 app_settings.peek().save();

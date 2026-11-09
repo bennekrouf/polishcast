@@ -254,6 +254,7 @@ button.panel-toggle:hover { color: var(--text); }
 .segmented button:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
 .segmented button:last-child { border-radius: 0 7px 7px 0; }
 .segmented button.on { background: var(--zoom); border-color: var(--zoom); }
+.segmented button:disabled { opacity: 0.45; cursor: default; }
 
 .swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .swatch { width: 28px; height: 28px; padding: 0; border-radius: 6px; }
