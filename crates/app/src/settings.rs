@@ -38,8 +38,8 @@ pub struct Settings {
 /// api0's AI regions, as every Mayorana app names them (`desktop_kit::region`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AiRegion {
-    #[default]
     Europe,
+    #[default]
     China,
     Usa,
 }
