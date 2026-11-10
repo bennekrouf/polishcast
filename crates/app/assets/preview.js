@@ -5,7 +5,9 @@
 // Elements (from editor.rs): #sv-stage, #sv-content, #sv-video, #sv-cursor, #sv-ripple,
 // #sv-timeline, #sv-playhead, #sv-time. Rust never sets the style properties this script owns.
 //
-// Messages to Rust, through `sv.send`: {kind: "tick", t, playing} and {kind: "key", key, cmd, shift}.
+// Messages to Rust, through `sv.send`: {kind: "tick", t, playing}, {kind: "key", key, cmd, shift},
+// {kind: "pick", index} and {kind: "mask", index, x, y, w, h}, the last when a hidden area (#sv-masks)
+// has been dragged. Rust places those areas; only during the drag does this script move them.
 //
 // Music (`setMusic`) is placed in video time by Rust; this script only plays each piece while
 // the video is in it, kept in step with the video.
@@ -149,6 +151,17 @@
         const size = at(2);
         v.style.transform = `scale(${1 / size}) translate(${-at(0) * 100}%, ${-at(1) * 100}%)`;
 
+        // The hidden areas ride on the video. The one being edited stays in view at any time.
+        const masks = document.getElementById("sv-masks");
+        if (masks) {
+          masks.style.transform = v.style.transform;
+          masks.style.setProperty("--camera", size);
+          for (const m of masks.children) {
+            const on = m.classList.contains("selected") || (time >= +m.dataset.from && time <= +m.dataset.until);
+            m.style.display = on ? "block" : "none";
+          }
+        }
+
         const cursor = document.getElementById("sv-cursor");
         if (cursor) {
           // Not interpolated into or out of view: it would slide in from the corner.
@@ -210,12 +223,66 @@
 
   // Click or drag on the timeline (outside a zoom, cut or clip) to seek.
   document.addEventListener("pointerdown", (e) => {
-    if (!e.target.closest("#sv-timeline") || e.target.closest(".zoom, .cut, .clip, .music")) return;
+    if (!e.target.closest("#sv-timeline") || e.target.closest(".zoom, .cut, .clip, .music, .mask-span")) return;
     sv.scrubbing = true;
     sv.scrub(e);
   });
   document.addEventListener("pointermove", (e) => sv.scrubbing && sv.scrub(e));
   document.addEventListener("pointerup", () => (sv.scrubbing = false));
+
+  // Drag a hidden area to move it, or by a corner to resize it. Rust keeps it on the screen and
+  // saves it when the drag ends: one undo step.
+  const MIN_MASK = 0.01;
+  const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+  let drag = null;
+  document.addEventListener("pointerdown", (e) => {
+    const el = e.target.closest(".mask");
+    const v = sv.video();
+    if (!el || !v) return;
+    e.preventDefault();
+    // The video's box includes the camera, so it is the whole screen as it stands now.
+    const screen = v.getBoundingClientRect();
+    const read = (side) => parseFloat(el.style[side]) / 100;
+    drag = {
+      el,
+      grip: e.target.dataset.grip || "",
+      from: [e.clientX, e.clientY],
+      screen,
+      box: { x: read("left"), y: read("top"), w: read("width"), h: read("height") },
+      now: null,
+    };
+    if (sv.send) sv.send({ kind: "pick", index: +el.dataset.index });
+  });
+  document.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    const { box, grip, screen, el, from } = drag;
+    const dx = (e.clientX - from[0]) / screen.width;
+    const dy = (e.clientY - from[1]) / screen.height;
+    let { x, y, w, h } = box;
+    if (!grip) {
+      x = clamp(x + dx, 0, 1 - w);
+      y = clamp(y + dy, 0, 1 - h);
+    }
+    if (grip.includes("w")) {
+      x = clamp(x + dx, 0, box.x + box.w - MIN_MASK);
+      w = box.x + box.w - x;
+    }
+    if (grip.includes("e")) w = clamp(w + dx, MIN_MASK, 1 - x);
+    if (grip.includes("n")) {
+      y = clamp(y + dy, 0, box.y + box.h - MIN_MASK);
+      h = box.y + box.h - y;
+    }
+    if (grip.includes("s")) h = clamp(h + dy, MIN_MASK, 1 - y);
+    el.style.left = `${x * 100}%`;
+    el.style.top = `${y * 100}%`;
+    el.style.width = `${w * 100}%`;
+    el.style.height = `${h * 100}%`;
+    drag.now = { x, y, w, h };
+  });
+  document.addEventListener("pointerup", () => {
+    if (drag && drag.now && sv.send) sv.send({ kind: "mask", index: +drag.el.dataset.index, ...drag.now });
+    drag = null;
+  });
 
   // Keys, unless a text field or slider has them. Space is handled here so a focused button
   // doesn't also get clicked.

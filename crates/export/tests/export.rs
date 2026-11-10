@@ -2,6 +2,7 @@
 //! ffmpeg isn't installed.
 // A test or an example may panic: that is a failed run, not a crash anyone sees.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
+use polishcast_core::mask::{Cover, Mask};
 use polishcast_core::{take, Button, Click, CursorSample, EventLog, Project};
 use polishcast_export::{export, ffmpeg, Format, Progress, Settings};
 use std::path::Path;
@@ -497,6 +498,119 @@ fn background_noise_is_taken_out_of_the_voice_but_not_the_music() {
     let (plain, cleaned) = (export_with(None, true), export_with(Some(1.0), true));
     let music = |file| band_db(&ffmpeg, file, 1500, (3.5, 4.5));
     assert!((music(&cleaned) - music(&plain)).abs() < 1.0, "music {:.1} → {:.1} dB", music(&plain), music(&cleaned));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// A take of a white screen, shown whole, for reading what is drawn over it. Its folder and its
+/// project, which the caller changes and saves.
+fn white_take(name: &str, ffmpeg: &Path) -> (std::path::PathBuf, Project) {
+    let dir = std::env::temp_dir().join(format!("polishcast-{name}-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    make_take(&dir, ffmpeg);
+    let status = Command::new(ffmpeg)
+        .args(["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=white:s=320x200:r=30:d=2"])
+        .args(["-f", "lavfi", "-i", "sine=frequency=440:duration=2"])
+        .args(["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest"])
+        .arg(dir.join(take::SCREEN))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let mut p = Project::load(&dir.join(take::PROJECT)).unwrap();
+    p.zooms.clear();
+    p.style.padding = 0.0;
+    p.style.radius = 0.0;
+    p.style.shadow = false;
+    (dir, p)
+}
+
+/// The left half of the screen, hidden from `start` to `end`.
+fn left_half(start: f64, end: f64, cover: Cover) -> Mask {
+    Mask::new(start, end, (0.0, 0.0, 0.5, 1.0), cover, 2.0)
+}
+
+/// The red value at (`x`, 20) of a frame of 320 × 200: high above the cursor's path.
+fn red(frame: &[u8], x: usize) -> u8 {
+    frame[(20 * 320 + x) * 3]
+}
+
+fn export_small(dir: &Path, out: &Path) {
+    let settings = Settings { format: Format::Mp4, long_side: 320, fps: 30, mute: false, ..Settings::default() };
+    export(dir, out, settings, &Progress::default(), &AtomicBool::new(false)).unwrap();
+}
+
+#[test]
+fn a_hidden_area_is_covered_only_where_and_while_it_should_be() {
+    let Some(ffmpeg) = ffmpeg() else {
+        eprintln!("skipped: no ffmpeg");
+        return;
+    };
+    let (dir, mut p) = white_take("mask", &ffmpeg);
+    p.masks = vec![left_half(0.5, 1.0, Cover::Solid)];
+    p.save(&dir.join(take::PROJECT)).unwrap();
+    let out = dir.join("out.mp4");
+    export_small(&dir, &out);
+
+    let during = frame_at(&ffmpeg, &out, 0.8);
+    assert!(red(&during, 80) < 60, "covered: {}", red(&during, 80));
+    assert!(red(&during, 240) > 200, "the other half is clear: {}", red(&during, 240));
+    let after = frame_at(&ffmpeg, &out, 1.6);
+    assert!(red(&after, 80) > 200, "clear again after it ends: {}", red(&after, 80));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn the_dissolve_after_a_cut_does_not_bring_a_hidden_area_back() {
+    let Some(ffmpeg) = ffmpeg() else {
+        eprintln!("skipped: no ffmpeg");
+        return;
+    };
+    let (dir, mut p) = white_take("mask-cut", &ffmpeg);
+    // Hidden up to the cut, clear after it: the frames dissolving out of the last hidden one
+    // must start from the cover, not from what was under it.
+    p.masks = vec![left_half(0.0, 0.75, Cover::Solid)];
+    p.removed = vec![(0.9, 1.2)];
+    p.save(&dir.join(take::PROJECT)).unwrap();
+    let out = dir.join("out.mp4");
+    export_small(&dir, &out);
+
+    let dissolving = frame_at(&ffmpeg, &out, 0.92);
+    assert!(red(&dissolving, 80) < 150, "still mostly the cover: {}", red(&dissolving, 80));
+    assert!(red(&dissolving, 240) > 200, "{}", red(&dissolving, 240));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_blurred_area_keeps_only_a_coarse_picture() {
+    let Some(ffmpeg) = ffmpeg() else {
+        eprintln!("skipped: no ffmpeg");
+        return;
+    };
+    let dir = std::env::temp_dir().join(format!("polishcast-mask-blur-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    make_take(&dir, &ffmpeg);
+    let mut p = Project::load(&dir.join(take::PROJECT)).unwrap();
+    p.zooms.clear();
+    p.style.padding = 0.0;
+    p.style.radius = 0.0;
+    p.style.shadow = false;
+    p.masks = vec![left_half(0.0, 2.0, Cover::Blur)];
+    p.save(&dir.join(take::PROJECT)).unwrap();
+    let out = dir.join("out.mp4");
+    export_small(&dir, &out);
+
+    // The test pattern's sharp edges: colours may still drift across the blur, but no two
+    // neighbouring pixels jump from one to another as they do on the clear half.
+    let frame = frame_at(&ffmpeg, &out, 1.0);
+    let sharpest = |range: std::ops::Range<usize>| -> u8 {
+        (0..200)
+            .step_by(8)
+            .flat_map(|y| range.clone().map(move |x| (y, x)))
+            .map(|(y, x)| frame[(y * 320 + x) * 3].abs_diff(frame[(y * 320 + x + 1) * 3]))
+            .max()
+            .unwrap()
+    };
+    let (hidden, clear) = (sharpest(4..150), sharpest(170..316));
+    assert!(hidden < clear / 2, "hidden {hidden}, clear {clear}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 

@@ -2,6 +2,7 @@
 
 use crate::blanks::{BlankParams, Cut, Timeline};
 use crate::events::EventLog;
+use crate::mask::Mask;
 use crate::music::{self, Music, Placed};
 use crate::zoom::{auto_zoom, AutoZoom, Zoom};
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,9 @@ pub struct Project {
     pub width: u32,
     pub height: u32,
     pub zooms: Vec<Zoom>,
+    /// Areas of the screen hidden from the video; they may overlap.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub masks: Vec<Mask>,
     #[serde(default)]
     pub style: Style,
     /// Blank cutting, when turned on: its settings, and the cuts they found (some may be kept).
@@ -135,6 +139,7 @@ impl Project {
             width,
             height,
             zooms: auto_zoom(&events.clicks, duration, &AutoZoom::default()),
+            masks: Vec::new(),
             style: Style::default(),
             blanks: None,
             cuts: Vec::new(),
@@ -249,6 +254,21 @@ mod tests {
         p.cuts = vec![Cut { start: 1.0, end: 5.0, keep: false }, Cut { start: 10.0, end: 11.0, keep: true }];
         p.blanks = Some(BlankParams::default());
         assert_eq!(p.video_duration(), 15.0, "overlaps count once, kept cuts not at all");
+    }
+
+    #[test]
+    fn projects_saved_before_hidden_areas_existed_have_none() {
+        let p = Project::new(12.5, 2880, 1800, &EventLog::default());
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(!json.contains("masks"), "none isn't written");
+        assert!(serde_json::from_str::<Project>(&json).unwrap().masks.is_empty());
+    }
+
+    #[test]
+    fn a_clip_keeps_the_hidden_areas() {
+        let mut p = Project::new(60.0, 1920, 1080, &EventLog::default());
+        p.masks = vec![crate::mask::Mask::new(1.0, 50.0, (0.1, 0.1, 0.2, 0.2), Default::default(), 60.0)];
+        assert_eq!(p.clipped(10.0, 20.0).unwrap().masks, p.masks);
     }
 
     #[test]

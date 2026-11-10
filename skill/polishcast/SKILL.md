@@ -57,6 +57,11 @@ clips, cuts, style and length. Times are seconds of the recording.
 
 - **Zooms**: `set_zooms` updates, removes or adds zooms (numbered from 1 as
   `get_take` listed them), or suggests them again from the clicks.
+- **Hiding**: `set_masks` covers rectangles of the screen between two moments
+  (`x`, `y`, `w`, `h` as fractions of the screen; `cover` is `solid`, the
+  default, or `blur`). Keep it solid for passwords, keys and short numbers: a
+  blur can give them away. An area doesn't follow content that scrolls, and
+  only exports are covered, not the recording, what is said or the captions.
 - **Cutting**: `set_clips` splits the recording and leaves parts out
   (`keep_from`, `keep_until` for trimming the ends). `set_blanks` cuts the
   pauses where nobody speaks (`threshold_db`, `min_pause_secs`).

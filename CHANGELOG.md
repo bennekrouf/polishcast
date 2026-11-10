@@ -16,6 +16,18 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- **+ Hide** (or H) covers part of the screen in the video, for a password,
+  a client's name or a number that shouldn't be seen. Drag the box over it on
+  the preview, choose a solid box or a blur, and set when it starts and ends.
+  It stays on what it covers through your zooms, and every MP4, GIF and clip
+  you export has it. The box stays still on the screen, so if what it hides
+  scrolls, add another one. Your recording stays as it was in the take's
+  folder, and what you say and the captions aren't hidden.
+
 ## [0.1.63] - 2026-11-08
 
 ### Added

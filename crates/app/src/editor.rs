@@ -8,8 +8,10 @@ use crate::{media_server, platform};
 use dioxus::desktop::use_asset_handler;
 use dioxus::prelude::*;
 use polishcast_core::blanks::redetect;
+use polishcast_core::camera::viewport_at;
 use polishcast_core::clips;
 use polishcast_core::history::History;
+use polishcast_core::mask::{Cover, Mask};
 use polishcast_core::music::{self, Music};
 use polishcast_core::project::{Aspect, Background, DENOISE_STRENGTH, SPEEDS};
 use polishcast_core::zoom::{self, Zoom};
@@ -38,6 +40,11 @@ const TRACK_FPS: f64 = 30.0;
 const TRACK_LONG_SIDE: u32 = 1920;
 /// A zoom added by hand lasts this long, unless it runs into the next one.
 const NEW_ZOOM_SECS: f64 = 2.5;
+/// A hidden area added by hand lasts this long.
+const NEW_MASK_SECS: f64 = 3.0;
+/// And takes up this much of what's on view.
+const NEW_MASK_SIZE: (f32, f32) = (0.25, 0.08);
+const COVERS: &[(Cover, &str)] = &[(Cover::Solid, "Solid box"), (Cover::Blur, "Blur")];
 
 const BACKGROUNDS: &[(&str, &str)] =
     &[("#4f46e5", "#db2777"), ("#0ea5e9", "#22c55e"), ("#f59e0b", "#ef4444"), ("#1e293b", "#475569")];
@@ -52,8 +59,27 @@ const ASPECTS: &[(Aspect, &str)] = &[
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 enum Msg {
-    Tick { t: f64, playing: bool },
-    Key { key: String, cmd: bool, shift: bool },
+    Tick {
+        t: f64,
+        playing: bool,
+    },
+    Key {
+        key: String,
+        cmd: bool,
+        shift: bool,
+    },
+    /// A hidden area was clicked on the preview.
+    Pick {
+        index: usize,
+    },
+    /// A hidden area was dragged on the preview to here.
+    Mask {
+        index: usize,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+    },
 }
 
 /// The project being edited, with undo and saving. Signals are `Copy`, so this is too.
@@ -195,6 +221,8 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
     let mut selected_clip = use_signal(|| Option::<(f64, f64)>::None);
     // A piece of music picked on the timeline; likewise exclusive.
     let mut selected_music = use_signal(|| Option::<usize>::None);
+    // A hidden area picked on the timeline or the preview; likewise exclusive.
+    let mut selected_mask = use_signal(|| Option::<usize>::None);
 
     // Serve the recording to the web view (127.0.0.1, or the app's own protocol as a fallback).
     let url = use_hook(|| media_server::publish(&dir.join(take::SCREEN)));
@@ -210,9 +238,9 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
 
     media::use_preview_track(doc, events.clone());
 
-    let sel = actions::Sel { time, selected, selected_clip, selected_music };
+    let sel = actions::Sel { time, selected, selected_clip, selected_music, selected_mask };
     let acts = actions::use_actions(&dir, doc, events.clone(), sel);
-    let actions::Actions { add_zoom, split_here, add_music, .. } = acts;
+    let actions::Actions { add_zoom, split_here, add_music, add_mask, .. } = acts;
     // The music picker, while it is open.
     let mut picking_music = use_signal(|| false);
     let take_name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -231,6 +259,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
     // Likewise a clip whose split was undone.
     let clip_selection = selected_clip().filter(|c| all_clips.contains(c));
     let music_selection = selected_music().filter(|&i| i < project.music.len());
+    let mask_selection = selected_mask().filter(|&i| i < project.masks.len());
     let src = match &url {
         Some(url) if in_app() => media_server::in_app_path(url),
         Some(url) => url.clone(),
@@ -256,6 +285,30 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                                 },
                                 onloadedmetadata: move |_| failed.set(false),
                                 onerror: move |_| if in_app() { failed.set(true) } else { in_app.set(true) },
+                            }
+                            // Moved with the video by the preview script, which also shows each
+                            // area while it is on.
+                            div { id: "sv-masks", class: "masks",
+                                for (i, m) in project.masks.iter().enumerate() {
+                                    div {
+                                        key: "{i}",
+                                        class: {
+                                            let cover = if m.cover == Cover::Blur { "blur" } else { "solid" };
+                                            let on = if mask_selection == Some(i) { " selected" } else { "" };
+                                            format!("mask {cover}{on}")
+                                        },
+                                        "data-index": "{i}",
+                                        "data-from": "{m.from()}",
+                                        "data-until": "{m.until()}",
+                                        left: "{m.x * 100.0}%",
+                                        top: "{m.y * 100.0}%",
+                                        width: "{m.w * 100.0}%",
+                                        height: "{m.h * 100.0}%",
+                                        for grip in ["nw", "ne", "sw", "se"] {
+                                            span { key: "{grip}", class: "grip {grip}", "data-grip": "{grip}" }
+                                        }
+                                    }
+                                }
                             }
                         }
                         // Under the cursor, as the export draws it.
@@ -305,6 +358,11 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                     span { class: "spacer" }
                     button { onclick: move |_| split_here(()), title: "S — then click a clip to remove it", "Split" }
                     button { onclick: move |_| add_zoom(()), title: "Z", "+ Zoom" }
+                    button {
+                        title: "H — cover something confidential from the playhead",
+                        onclick: move |_| add_mask(()),
+                        "+ Hide"
+                    }
                     // A song starts at the playhead; M then stops and restarts it as the video plays.
                     // From the library first (TrackCut's tracks, songs added before); the disk
                     // is a discreet link inside the picker.
@@ -345,6 +403,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                             onclick: move |_| {
                                 selected_clip.set(None);
                                 selected_music.set(None);
+                                selected_mask.set(None);
                                 let again = *selected.peek() == Some(i);
                                 selected.set(if again { None } else { Some(i) });
                             },
@@ -361,10 +420,28 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                             onclick: move |_| {
                                 selected.set(None);
                                 selected_clip.set(None);
+                                selected_mask.set(None);
                                 let again = *selected_music.peek() == Some(i);
                                 selected_music.set(if again { None } else { Some(i) });
                             },
                             "♪ {m.name}"
+                        }
+                    }
+                    for (i, m) in project.masks.iter().enumerate() {
+                        div {
+                            key: "mask-{i}-{m.start}",
+                            class: if mask_selection == Some(i) { "mask-span selected" } else { "mask-span" },
+                            left: "{m.start / duration * 100.0}%",
+                            width: "{(m.end - m.start) / duration * 100.0}%",
+                            title: "Hidden from the video here",
+                            onclick: move |_| {
+                                selected.set(None);
+                                selected_clip.set(None);
+                                selected_music.set(None);
+                                let again = *selected_mask.peek() == Some(i);
+                                selected_mask.set(if again { None } else { Some(i) });
+                            },
+                            if m.cover == Cover::Blur { "Blur" } else { "Hidden" }
                         }
                     }
                     div { class: "clips",
@@ -382,6 +459,7 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                                 onclick: move |_| {
                                     selected.set(None);
                                     selected_music.set(None);
+                                    selected_mask.set(None);
                                     selected_clip.set(Some((start, end)));
                                 },
                             }
@@ -394,7 +472,9 @@ fn Loaded(dir: PathBuf, project: Project, events: Rc<EventLog>) -> Element {
                 }
             }
             aside { class: "inspector",
-                if let Some(i) = selection {
+                if let Some(i) = mask_selection {
+                    MaskPanel { doc, index: i, selected_mask }
+                } else if let Some(i) = selection {
                     ZoomPanel { doc, index: i, selected }
                 } else if let Some(clip) = clip_selection {
                     ClipPanel { doc, clip, selected_clip }
