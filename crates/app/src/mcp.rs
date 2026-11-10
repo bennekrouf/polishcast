@@ -19,6 +19,7 @@ use crate::editor::{
 use crate::{licence, remote, takes, transcribing};
 use desktop_kit::mcp::Server;
 use dioxus::prelude::*;
+use polishcast_core::mask::{Cover, Mask};
 use polishcast_core::project::{Aspect, Background, DENOISE_STRENGTH, SPEEDS};
 use polishcast_core::zoom::{self, auto_zoom, AutoZoom, Zoom};
 use polishcast_core::{clips, take, EventLog, Loudness, Project};
@@ -77,6 +78,7 @@ fn run(name: &str, args: &Value) -> Result<Value, String> {
         "import_video" => import_video(args),
         "get_take" => Take::from(args).map(|t| t.describe()),
         "set_zooms" => set_zooms(args),
+        "set_masks" => set_masks(args),
         "set_clips" => set_clips(args),
         "set_blanks" => set_blanks(args),
         "set_style" => set_style(args),

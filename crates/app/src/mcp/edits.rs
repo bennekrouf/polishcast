@@ -1,4 +1,4 @@
-//! Changing a take's edits: zooms, clips, blanks and style.
+//! Changing a take's edits: zooms, hidden areas, clips, blanks and style.
 
 use super::*;
 
@@ -57,6 +57,60 @@ pub(super) fn set_zooms(args: &Value) -> Result<Value, String> {
         } else {
             Err(format!("Nothing was saved. Zooms not added: {}", refused.join("; ")))
         }
+    })?;
+    Ok(t.describe())
+}
+
+fn cover_of(v: &Value) -> Result<Option<Cover>, String> {
+    match v.as_str() {
+        None => Ok(None),
+        Some("solid") => Ok(Some(Cover::Solid)),
+        Some("blur") => Ok(Some(Cover::Blur)),
+        Some(other) => Err(format!("cover is solid or blur, not {other}")),
+    }
+}
+
+pub(super) fn set_masks(args: &Value) -> Result<Value, String> {
+    let t = Take::from(args)?;
+    t.change(|p| {
+        let count = p.masks.len();
+        let index = |n: u64| -> Result<usize, String> {
+            (n as usize).checked_sub(1).filter(|i| *i < count).ok_or(format!("no mask {n}: the take has {count}"))
+        };
+        for u in args["update"].as_array().into_iter().flatten() {
+            let i = index(u["mask"].as_u64().ok_or("each update needs its mask number")?)?;
+            let was = p.masks[i];
+            let side = |key: &str, now: f32| u[key].as_f64().map_or(now, |v| v as f32);
+            let (start, end) = (u["start"].as_f64().unwrap_or(was.start), u["end"].as_f64().unwrap_or(was.end));
+            if end <= start {
+                return Err(format!("mask {}: its end must come after its start. Nothing was saved.", i + 1));
+            }
+            p.masks[i].set_bounds(start, end, p.duration);
+            p.masks[i].set_rect(side("x", was.x), side("y", was.y), side("w", was.w), side("h", was.h));
+            if let Some(cover) = cover_of(&u["cover"])? {
+                p.masks[i].cover = cover;
+            }
+        }
+        let mut gone: Vec<usize> = numbers(args, "remove").into_iter().map(index).collect::<Result<_, _>>()?;
+        gone.sort_unstable();
+        gone.dedup();
+        for i in gone.into_iter().rev() {
+            p.masks.remove(i);
+        }
+        for a in args["add"].as_array().into_iter().flatten() {
+            // No defaults: an area left to a guess would be one left showing.
+            let number = |key: &str| a[key].as_f64().ok_or(format!("each mask added needs its {key}"));
+            let (start, end) = (number("start")?, number("end")?);
+            if end <= start || start >= p.duration {
+                return Err(format!(
+                    "a mask from {start} s to {end} s isn't inside the {} s recording. Nothing was saved.",
+                    p.duration
+                ));
+            }
+            let rect = (number("x")? as f32, number("y")? as f32, number("w")? as f32, number("h")? as f32);
+            p.masks.push(Mask::new(start, end, rect, cover_of(&a["cover"])?.unwrap_or_default(), p.duration));
+        }
+        Ok(())
     })?;
     Ok(t.describe())
 }

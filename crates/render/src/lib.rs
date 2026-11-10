@@ -5,6 +5,7 @@
 //! both show the same picture.
 
 pub mod compose;
+pub mod masks;
 
 use polishcast_core::camera::{smootherstep, viewport_at};
 use polishcast_core::cursor::{activity, click_at, idle_opacity, smooth};

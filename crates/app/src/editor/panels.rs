@@ -164,7 +164,7 @@ pub(super) fn StylePanel(doc: Doc, dir: PathBuf, picture_url: Option<String>) ->
             "Hide the cursor when it rests"
         }
         p { class: "hint",
-            "Click a zoom or a song on the timeline to edit it. Z adds a zoom at the playhead, S splits there and [ or ] trims before or after it, M stops or starts the music there; Space plays; ←/→ step."
+            "Click a zoom or a song on the timeline to edit it. Z adds a zoom at the playhead, H hides part of the screen from there, S splits there and [ or ] trims before or after it, M stops or starts the music there; Space plays; ←/→ step."
         }
     }
 }
@@ -247,6 +247,77 @@ pub(super) fn ZoomPanel(doc: Doc, index: usize, selected: Signal<Option<usize>>)
                 "Delete"
             }
             button { onclick: move |_| selected.set(None), "Done" }
+        }
+    }
+}
+
+#[component]
+pub(super) fn MaskPanel(doc: Doc, index: usize, selected_mask: Signal<Option<usize>>) -> Element {
+    let p = doc.project.read();
+    let m = p.masks[index];
+    let duration = p.duration;
+    let bounds = move |start: f64, end: f64| doc.live(|p| p.masks[index].set_bounds(start, end, duration));
+    rsx! {
+        h2 { "Hidden area {index + 1}" }
+        div { class: "field",
+            span { "Cover" }
+            div { class: "segmented",
+                for &(cover, name) in COVERS {
+                    button {
+                        class: if m.cover == cover { "on" } else { "" },
+                        onclick: move |_| doc.change(|p| p.masks[index].cover = cover),
+                        "{name}"
+                    }
+                }
+            }
+        }
+        div {
+            Slider {
+                edits: doc,
+                label: "Start",
+                value: m.start,
+                min: 0.0,
+                max: duration,
+                step: 0.05,
+                show: format!("{:.2} s", m.start),
+                oninput: move |v| bounds(v, m.end),
+            }
+            Slider {
+                edits: doc,
+                label: "End",
+                value: m.end,
+                min: 0.0,
+                max: duration,
+                step: 0.05,
+                show: format!("{:.2} s", m.end),
+                oninput: move |v| bounds(m.start, v),
+            }
+        }
+        div { class: "buttons",
+            button {
+                onclick: move |_| {
+                    document::eval(&format!("window.sv.seek({})", m.start));
+                },
+                "Go to start"
+            }
+            button {
+                class: "danger",
+                title: "⌫",
+                onclick: move |_| {
+                    selected_mask.set(None);
+                    doc.change(|p| {
+                        p.masks.remove(index);
+                    });
+                },
+                "Delete"
+            }
+            button { onclick: move |_| selected_mask.set(None), "Done" }
+        }
+        p { class: "hint",
+            "Drag it on the video to move it, or by a corner to resize it. It stays over the same part of the screen, so play it through to check that what it hides doesn't move out from under it."
+        }
+        p { class: "hint",
+            "A solid box leaves nothing to recover; a blur can give away short text or numbers. Only the exported video is covered, not your recording in the take's folder, what you say, or the captions."
         }
     }
 }

@@ -195,6 +195,23 @@ button.panel-toggle:hover { color: var(--text); }
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
+/* Hidden areas, over the video and moved with it (--camera undoes the camera's scale). */
+.stage .masks { position: absolute; inset: 0; transform-origin: 0 0; pointer-events: none; }
+.stage .mask { position: absolute; display: none; box-sizing: border-box; cursor: move; pointer-events: auto; }
+.stage .mask.solid { background: #18181b; }
+/* Opaque enough to hide what's under it where the web view can't blur behind an element. */
+.stage .mask.blur {
+  background: rgba(120, 120, 130, 0.72);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.stage .mask.selected { outline: calc(2px * var(--camera, 1)) solid var(--selected); }
+.stage .mask .grip { display: none; position: absolute; width: calc(12px * var(--camera, 1)); height: calc(12px * var(--camera, 1)); background: var(--selected); border-radius: 50%; }
+.stage .mask.selected .grip { display: block; }
+.stage .mask .grip.nw { left: 0; top: 0; transform: translate(-50%, -50%); cursor: nwse-resize; }
+.stage .mask .grip.ne { right: 0; top: 0; transform: translate(50%, -50%); cursor: nesw-resize; }
+.stage .mask .grip.sw { left: 0; bottom: 0; transform: translate(-50%, 50%); cursor: nesw-resize; }
+.stage .mask .grip.se { right: 0; bottom: 0; transform: translate(50%, 50%); cursor: nwse-resize; }
 
 .transport { display: flex; align-items: center; gap: 8px; }
 .transport .play { width: 40px; }
@@ -203,16 +220,36 @@ button.panel-toggle:hover { color: var(--text); }
 
 .timeline {
   position: relative;
-  height: 80px;
+  height: 102px;
   background: var(--panel);
   border-radius: 6px;
   overflow: hidden;
   cursor: text;
 }
+/* Hidden areas: a lane between the music and the clips */
+.timeline .mask-span {
+  position: absolute;
+  top: 60px;
+  height: 16px;
+  z-index: 1;
+  box-sizing: border-box;
+  min-width: 4px;
+  padding: 0 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+  border: 1px solid var(--muted);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.timeline .mask-span.selected { background: var(--muted); outline: 2px solid var(--selected); }
 .timeline .zoom {
   position: absolute;
   top: 6px;
-  bottom: 46px;
+  bottom: 68px;
   min-width: 4px;
   background: color-mix(in srgb, var(--zoom) 55%, transparent);
   border: 1px solid var(--zoom);

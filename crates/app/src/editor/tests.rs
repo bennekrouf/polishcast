@@ -24,6 +24,15 @@ fn the_suggested_name_tells_exports_apart_and_dates_them() {
 }
 
 #[test]
+fn the_preview_scripts_messages_about_hidden_areas_are_understood() {
+    let pick = serde_json::from_str::<Msg>(r#"{"kind":"pick","index":2}"#).unwrap();
+    assert!(matches!(pick, Msg::Pick { index: 2 }));
+    let drag = r#"{"kind":"mask","index":1,"x":0.25,"y":0.5,"w":0.125,"h":0.0625}"#;
+    let drag = serde_json::from_str::<Msg>(drag).unwrap();
+    assert!(matches!(drag, Msg::Mask { index: 1, x: 0.25, y: 0.5, w: 0.125, h: 0.0625 }));
+}
+
+#[test]
 fn a_typed_name_becomes_a_file_name() {
     assert_eq!(clean_export_name("  demo.mp4 ", Format::Mp4).as_deref(), Some("demo"));
     assert_eq!(clean_export_name("a/b: c?", Format::Gif).as_deref(), Some("a-b- c-"));

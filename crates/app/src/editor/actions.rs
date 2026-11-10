@@ -3,13 +3,15 @@
 
 use super::*;
 
-/// The playhead and what is selected on the timeline: one of a zoom, a clip, or a piece of music.
+/// The playhead and what is selected on the timeline: one of a zoom, a clip, a piece of music,
+/// or a hidden area.
 #[derive(Clone, Copy)]
 pub(super) struct Sel {
     pub time: Signal<f64>,
     pub selected: Signal<Option<usize>>,
     pub selected_clip: Signal<Option<(f64, f64)>>,
     pub selected_music: Signal<Option<usize>>,
+    pub selected_mask: Signal<Option<usize>>,
 }
 
 #[derive(Clone, Copy)]
@@ -19,10 +21,11 @@ pub(super) struct Actions {
     pub trim: Callback<bool>,
     pub add_music: Callback<PathBuf>,
     pub toggle_music: Callback<()>,
+    pub add_mask: Callback<()>,
 }
 
 pub(super) fn use_actions(dir: &std::path::Path, doc: Doc, events: Rc<EventLog>, sel: Sel) -> Actions {
-    let Sel { time, mut selected, mut selected_clip, mut selected_music } = sel;
+    let Sel { time, mut selected, mut selected_clip, mut selected_music, mut selected_mask } = sel;
     let add_zoom = use_callback({
         let events = events.clone();
         move |()| {
@@ -33,7 +36,10 @@ pub(super) fn use_actions(dir: &std::path::Path, doc: Doc, events: Rc<EventLog>,
             let mut added = None;
             doc.change(|p| added = zoom::insert(&mut p.zooms, z));
             match added {
-                Some(i) => selected.set(Some(i)),
+                Some(i) => {
+                    selected_mask.set(None);
+                    selected.set(Some(i));
+                }
                 None => {
                     let mut error = doc.error;
                     error.set(Some("There's no room for a zoom here: move the playhead to a gap.".into()));
@@ -84,6 +90,7 @@ pub(super) fn use_actions(dir: &std::path::Path, doc: Doc, events: Rc<EventLog>,
                 Some(i) => {
                     selected.set(None);
                     selected_clip.set(None);
+                    selected_mask.set(None);
                     selected_music.set(Some(i));
                 }
                 None => error.set(Some("There's no room for music here: move the playhead.".into())),
@@ -127,13 +134,29 @@ pub(super) fn use_actions(dir: &std::path::Path, doc: Doc, events: Rc<EventLog>,
             error.set(Some("Choose a song with + Music first.".into()));
         }
     });
-    Actions { add_zoom, split_here, trim, add_music, toggle_music }
+    // Covers a box in the middle of what's on view at the playhead, to drag over what to hide.
+    let add_mask = use_callback(move |()| {
+        let t = time();
+        let mut added = 0;
+        doc.change(|p| {
+            let view = viewport_at(&p.zooms, t);
+            let (w, h) = (view.w * NEW_MASK_SIZE.0, view.h * NEW_MASK_SIZE.1);
+            let rect = (view.x + (view.w - w) / 2.0, view.y + (view.h - h) / 2.0, w, h);
+            p.masks.push(Mask::new(t, t + NEW_MASK_SECS, rect, Cover::default(), p.duration));
+            added = p.masks.len() - 1;
+        });
+        selected.set(None);
+        selected_clip.set(None);
+        selected_music.set(None);
+        selected_mask.set(Some(added));
+    });
+    Actions { add_zoom, split_here, trim, add_music, toggle_music, add_mask }
 }
 
 /// Ticks and keys from the preview script.
 pub(super) fn use_preview_messages(doc: Doc, sel: Sel, mut playing: Signal<bool>, actions: Actions) {
-    let Sel { mut time, mut selected, mut selected_clip, mut selected_music } = sel;
-    let Actions { add_zoom, split_here, trim, toggle_music, .. } = actions;
+    let Sel { mut time, mut selected, mut selected_clip, mut selected_music, mut selected_mask } = sel;
+    let Actions { add_zoom, split_here, trim, toggle_music, add_mask, .. } = actions;
     use_future(move || async move {
         let mut channel = document::eval("window.sv.send = (m) => dioxus.send(m); await new Promise(() => {});");
         while let Ok(msg) = channel.recv::<Msg>().await {
@@ -142,16 +165,34 @@ pub(super) fn use_preview_messages(doc: Doc, sel: Sel, mut playing: Signal<bool>
                     time.set(t);
                     playing.set(p);
                 }
+                Msg::Pick { index } => {
+                    selected.set(None);
+                    selected_clip.set(None);
+                    selected_music.set(None);
+                    selected_mask.set(Some(index));
+                }
+                Msg::Mask { index, x, y, w, h } => doc.change(|p| {
+                    if let Some(m) = p.masks.get_mut(index) {
+                        m.set_rect(x, y, w, h);
+                    }
+                }),
                 Msg::Key { key, cmd, shift } => match (key.as_str(), cmd, shift) {
                     ("z", true, false) => doc.undo(),
                     ("z" | "Z", true, true) => doc.redo(),
                     ("z", false, false) => add_zoom(()),
                     ("s", false, false) => split_here(()),
                     ("m", false, false) => toggle_music(()),
+                    ("h", false, false) => add_mask(()),
                     ("[", false, _) => trim(true),
                     ("]", false, _) => trim(false),
                     ("Backspace" | "Delete", false, _) => {
-                        if let Some(i) = selected.take() {
+                        if let Some(i) = selected_mask.take() {
+                            doc.change(|p| {
+                                if i < p.masks.len() {
+                                    p.masks.remove(i);
+                                }
+                            });
+                        } else if let Some(i) = selected.take() {
                             doc.change(|p| {
                                 if i < p.zooms.len() {
                                     p.zooms.remove(i);
@@ -171,6 +212,7 @@ pub(super) fn use_preview_messages(doc: Doc, sel: Sel, mut playing: Signal<bool>
                         selected.set(None);
                         selected_clip.set(None);
                         selected_music.set(None);
+                        selected_mask.set(None);
                     }
                     _ => {}
                 },

@@ -503,6 +503,8 @@ fn pump(
             skipped = true;
             continue;
         }
+        // First of all: the frame kept for the dissolve after a cut is then covered too.
+        polishcast_render::masks::paint(&mut source, sw, sh, &scene.project.masks, t);
         if joins {
             if skipped && i > 0 {
                 std::mem::swap(&mut held, &mut shown);

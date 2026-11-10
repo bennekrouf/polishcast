@@ -116,6 +116,23 @@ pub(super) fn describe(t: &Take, p: &Project) -> Value {
             })
         })
         .collect();
+    let masks: Vec<Value> = p
+        .masks
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            json!({
+                "mask": i + 1,
+                "start": round(m.start),
+                "end": round(m.end),
+                "x": round32(m.x),
+                "y": round32(m.y),
+                "w": round32(m.w),
+                "h": round32(m.h),
+                "cover": if m.cover == Cover::Blur { "blur" } else { "solid" },
+            })
+        })
+        .collect();
     let clip_list: Vec<Value> = clips::clips(&p.splits, p.duration)
         .into_iter()
         .enumerate()
@@ -141,6 +158,7 @@ pub(super) fn describe(t: &Take, p: &Project) -> Value {
         "size_px": [p.width, p.height],
         "clicks": t.events().clicks.len(),
         "zooms": zooms,
+        "masks": masks,
         "clips": clip_list,
         "blank_cutting": blanks,
         "speed": p.speed(),

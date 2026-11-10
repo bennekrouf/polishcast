@@ -16,6 +16,18 @@ pub(super) fn tools() -> Value {
             "y": { "type": "number", "minimum": 0, "maximum": 1, "description": "From top (0) to bottom (1)." },
         },
     });
+    let cover = json!({ "type": "string", "enum": ["solid", "blur"], "description": "Default solid: nothing is left of what's under it. A blur can give away short text or numbers." });
+    let mask_box = json!({
+        "start": { "type": "number" },
+        "end": { "type": "number" },
+        "x": { "type": "number", "minimum": 0, "maximum": 1, "description": "Left edge, from the screen's left (0) to right (1)." },
+        "y": { "type": "number", "minimum": 0, "maximum": 1, "description": "Top edge, from top (0) to bottom (1)." },
+        "w": { "type": "number", "minimum": 0, "maximum": 1, "description": "Width, as a fraction of the screen's." },
+        "h": { "type": "number", "minimum": 0, "maximum": 1, "description": "Height, as a fraction of the screen's." },
+        "cover": cover,
+    });
+    let mut mask_update = mask_box.clone();
+    mask_update["mask"] = json!({ "type": "integer", "minimum": 1 });
     let mp4_sizes: Vec<u32> = RESOLUTIONS.iter().map(|(px, _)| *px).collect();
     let gif_sizes: Vec<u32> = GIF_SIZES.iter().map(|(px, _)| *px).collect();
     json!([
@@ -35,7 +47,7 @@ pub(super) fn tools() -> Value {
         },
         {
             "name": "get_take",
-            "description": "One take in full: its zooms, its clips (and which are left out), its blank cutting, \
+            "description": "One take in full: its zooms, its hidden areas, its clips (and which are left out), its blank cutting, \
                             its style, speed and frame shape, its noise reduction, and how many clicks were recorded.",
             "inputSchema": { "type": "object", "properties": { "take": take_arg }, "required": ["take"] },
         },
@@ -64,6 +76,31 @@ pub(super) fn tools() -> Value {
                     },
                     "remove": indices,
                     "add": { "type": "array", "items": zoom },
+                },
+                "required": ["take"],
+            },
+        },
+        {
+            "name": "set_masks",
+            "description": "Hides rectangles of the screen from the video between two moments, for something \
+                            confidential on screen. Numbered from 1 as get_take lists them before this call; \
+                            updates are applied first, then removals, then additions, which may overlap. An \
+                            area stays still on the screen and on a moment past both ends; it follows zooms \
+                            by itself, not content that scrolls. Only exports are covered: not the recording \
+                            in the take's folder, what is said, or the transcript and captions.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "take": take_arg,
+                    "update": {
+                        "type": "array",
+                        "items": { "type": "object", "properties": mask_update, "required": ["mask"] },
+                    },
+                    "remove": indices,
+                    "add": {
+                        "type": "array",
+                        "items": { "type": "object", "properties": mask_box, "required": ["start", "end", "x", "y", "w", "h"] },
+                    },
                 },
                 "required": ["take"],
             },

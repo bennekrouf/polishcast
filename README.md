@@ -119,7 +119,7 @@ Homebrew's folders or in TrackCut's tools folder.
 
 `polishcast mcp` serves the takes to an MCP client over stdio, with no window
 (`app/src/mcp.rs`); the **MCP** button next to Get Pro… shows the Claude Desktop config
-and the Claude Code command. The tools: `list_takes`, `get_take`, `set_zooms`,
+and the Claude Code command. The tools: `list_takes`, `get_take`, `set_zooms`, `set_masks`,
 `set_clips`, `set_blanks`, `set_style` and `export`, on the editor's own helpers
 (`export_path`, `measure`, `cut_blanks`, `toggle_clip`) and the same free-export count.
 Each tool reads `project.json`, changes it and writes it back at once; an open editor
