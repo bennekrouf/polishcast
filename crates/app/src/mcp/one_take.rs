@@ -21,13 +21,16 @@ impl Take {
         Ok(Self { dir })
     }
 
-    /// The take an exported video (`video`) was made from: exports are named after their take
-    /// and written beside its folder.
+    /// The take an exported video (`video`) was made from: exports are written in their take's
+    /// folder (earlier versions wrote them beside it, named after the take).
     pub(super) fn of_video(args: &Value) -> Result<Self, String> {
         let video = args["video"].as_str().map(str::trim).filter(|s| !s.is_empty()).ok_or("give take or video")?;
         let video = Path::new(video);
         let stem = video.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let folder = video.parent().ok_or("video is an absolute path")?;
+        if folder.join(take::SCREEN).is_file() {
+            return Take::from(&json!({ "take": folder }));
+        }
         let dir = std::fs::read_dir(folder)
             .map_err(|e| format!("{}: {e}", folder.display()))?
             .filter_map(|e| e.ok().map(|e| e.path()))

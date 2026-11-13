@@ -166,7 +166,7 @@ pub(super) fn tools() -> Value {
         {
             "name": "export",
             "description": format!(
-                "Writes the video next to the take's folder, as an MP4 (with sound, unless mute) or a GIF \
+                "Writes the video in the take's folder, as an MP4 (with sound, unless mute) or a GIF \
                  (silent, looping), named after the take, its size, frame rate, shape, speed, whether the \
                  blanks are cut, whether it is muted and the time of the export, so it never replaces an earlier one; name sets another name. Takes \
                  about as long as the video on a recent Mac; ffmpeg is downloaded first if none is installed. Sizes are pixels along the longer side: {mp4_sizes:?} for MP4, \
@@ -189,7 +189,7 @@ pub(super) fn tools() -> Value {
         },
         {
             "name": "export_clip",
-            "description": "Writes a short clip of a take as an MP4 next to its folder, for TikTok, Reels or Shorts: \
+            "description": "Writes a short clip of a take as an MP4 in its folder, for TikTok, Reels or Shorts: \
                             start and end are seconds of the take's exported video (after its cuts and speed), such as \
                             the clip times PublishKit's Repurpose suggests. The take's own edit is left as it is; zooms, \
                             cuts and style inside the clip are kept. Vertical (9:16) with the captions drawn in by \

@@ -46,6 +46,7 @@ Each take is a folder in `~/Movies/PolishCast/<date time>/`:
 | `events.json` | Pointer positions and clicks, normalized to the display, seconds from the first frame |
 | `project.json` | Edits: zooms (suggested from clicks), splits and removed clips, style, aspect |
 | `background-*.png/jpg` | A background picture, copied in when chosen (a new name each time, so undo works) |
+| `<take name> ….mp4/gif` | The videos exported from it (with their `.srt`, `.vtt` and `.chapters.txt` when captions are written) |
 
 Right after a take, `screen.mov` is **compacted** in the background: ScreenCaptureKit writes
 at a fixed, high bitrate (100–500 MB a minute on a Retina display), so the app re-encodes it
@@ -102,7 +103,7 @@ the settings.
 
 ### Export
 
-**Export MP4** in the editor writes `<take name>.mp4` next to the take's folder, at 1080p,
+**Export MP4** in the editor writes `<take name>.mp4` in the take's folder, at 1080p,
 1440p or 4K (along the longer side, in the chosen frame), 30 or 60 fps. **GIF** writes
 `<take name>.gif` at 640–1280 px and 10–24 fps, without sound, looping: one palette for the
 whole video (`palettegen` on what changes between frames) and only each frame's changed

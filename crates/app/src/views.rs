@@ -518,8 +518,11 @@ fn DeleteDialog(dir: PathBuf, on_close: EventHandler<()>, on_confirm: EventHandl
                 div { class: "modal-body",
                     p { class: "delete-name", "{name}" }
                     p { class: "hint",
-                        "The recording and its edits go to the system Trash, so you can still restore them from there."
-                        if exported { " The videos you exported are not touched." }
+                        if exported {
+                            "The recording, its edits and the videos exported from it go to the system Trash, so you can still restore them from there."
+                        } else {
+                            "The recording and its edits go to the system Trash, so you can still restore them from there."
+                        }
                     }
                     div { class: "modal-actions",
                         button { onclick: move |_| on_close.call(()), "Cancel" kbd { "Esc" } }

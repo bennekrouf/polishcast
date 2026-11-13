@@ -79,7 +79,7 @@ step, so the user can always undo in the window.
 
 ## Exporting
 
-`export` writes an MP4 or a GIF next to the take's folder (`size`, `fps`,
+`export` writes an MP4 or a GIF in the take's folder (`size`, `fps`,
 `name`, `mute`). A file of the same name is replaced, so ask before reusing a
 name. The free version exports 10 different takes; after that, the user needs
 PolishCast Pro. Export uses ffmpeg, which the app fetches itself on first use;

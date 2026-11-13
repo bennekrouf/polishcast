@@ -54,8 +54,12 @@ fn a_takes_exports_are_found_by_its_name() {
     ] {
         std::fs::write(base.join(f), b"").unwrap();
     }
+    // Written inside the take's folder, an export is the take's whatever it is called.
+    std::fs::write(dir.join("For the newsletter.mp4"), b"").unwrap();
+    std::fs::write(dir.join(polishcast_core::take::SCREEN), b"").unwrap();
     let found: Vec<String> =
         exports_of(&dir).iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
     std::fs::remove_dir_all(&base).unwrap();
-    assert_eq!(found.len(), 3, "{found:?}");
+    assert_eq!(found.len(), 4, "{found:?}");
+    assert!(found.contains(&"For the newsletter.mp4".to_string()), "{found:?}");
 }

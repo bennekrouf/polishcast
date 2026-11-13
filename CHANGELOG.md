@@ -16,6 +16,23 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- Every video you export now goes in its take's folder, with the recording,
+  instead of loose beside the take folders. Videos exported earlier are moved
+  into their take's folder the first time PolishCast opens, so
+  Movies/PolishCast holds only one folder per take. Moving a take to the Trash
+  now moves its exported videos there too, and you can restore them from the
+  Trash.
+
+### Fixed
+
+- The recordings list shows your newest take at the top. Takes you named
+  used to sort by name above the newer ones named after their date, so a take
+  you had just recorded could appear far down the list.
+
 ## [0.1.64] - 2026-11-10
 
 ### Added
