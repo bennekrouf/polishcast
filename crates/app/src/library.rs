@@ -110,8 +110,8 @@ mod tests {
         std::fs::write(dir.join(take::PROJECT), b"{}").unwrap();
         assert_eq!(item_of(&dir).unwrap().status, Status::Polishing);
 
-        std::fs::write(root.join("Demo 1080p.mp4"), b"video").unwrap();
-        std::fs::write(root.join("Demo 1080p.srt"), b"1").unwrap();
+        std::fs::write(dir.join("Demo 1080p.mp4"), b"video").unwrap();
+        std::fs::write(dir.join("Demo 1080p.srt"), b"1").unwrap();
         let item = item_of(&dir).unwrap();
         assert_eq!(item.status, Status::Ready);
         let roles: Vec<Role> = item.files.iter().map(|f| f.role).collect();

@@ -38,25 +38,31 @@ pub(crate) fn export_name(
     format!("{} (exported {})", parts.join(" "), at.format("%Y-%m-%d %H.%M.%S"))
 }
 
-/// The videos exported from the take in `dir` that still carry its name: the one named exactly
-/// after it (as exports were before they were dated) and those named as `export_name` suggests.
+/// The videos exported from the take in `dir`: every MP4 and GIF in its folder, where exports
+/// are written, and those left beside the folder by earlier versions that still carry its name
+/// (named exactly after it, or as `export_name` suggests).
 pub(crate) fn exports_of(dir: &std::path::Path) -> Vec<PathBuf> {
-    let (Some(take), Some(parent)) = (dir.file_name().map(|n| n.to_string_lossy().into_owned()), dir.parent()) else {
-        return Vec::new();
+    let videos = |folder: &std::path::Path| -> Vec<PathBuf> {
+        std::fs::read_dir(folder)
+            .map(|r| {
+                r.filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("mp4" | "gif")) && p.is_file())
+                    .collect()
+            })
+            .unwrap_or_default()
     };
-    let Ok(read) = std::fs::read_dir(parent) else { return Vec::new() };
-    let mut found: Vec<PathBuf> = read
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| {
-            let ext = p.extension().and_then(|e| e.to_str());
-            let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-            matches!(ext, Some("mp4" | "gif"))
-                && p.is_file()
-                && (stem == take || stem.strip_prefix(&take).is_some_and(|rest| rest.starts_with(' ')))
-        })
-        .collect();
+    let mut found = videos(dir);
+    if let (Some(take), Some(parent)) = (dir.file_name().map(|n| n.to_string_lossy().into_owned()), dir.parent()) {
+        found.extend(videos(parent).into_iter().filter(|p| named_after(p, &take)));
+    }
     found.sort();
     found
+}
+
+/// Whether the file at `p` is named after the take `take`: exactly, or followed by a space.
+pub(crate) fn named_after(p: &std::path::Path, take: &str) -> bool {
+    let stem = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    stem == take || stem.strip_prefix(take).is_some_and(|rest| rest.starts_with(' '))
 }
 
 #[component]

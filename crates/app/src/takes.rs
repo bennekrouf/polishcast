@@ -14,9 +14,46 @@ pub fn library() -> PathBuf {
     DIR.get_or_init(|| {
         let videos = dirs::video_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Movies"));
         recased(&videos, "Polishcast", "PolishCast");
-        moved_into_place(&videos.join("Small Video"), videos.join("PolishCast"))
+        let dir = moved_into_place(&videos.join("Small Video"), videos.join("PolishCast"));
+        gather_exports(&dir);
+        dir
     })
     .clone()
+}
+
+/// Moves the videos exported beside the take folders in `library` into the folder of the take
+/// each is named after, with their captions files. Exports were written beside the folders until
+/// they went in them, which left the library's top level a mix of folders and videos. A video
+/// named after no take, or one that can't be moved, stays where it is.
+fn gather_exports(library: &Path) {
+    let Ok(read) = std::fs::read_dir(library) else { return };
+    let (dirs, files): (Vec<PathBuf>, Vec<PathBuf>) =
+        read.filter_map(|e| e.ok().map(|e| e.path())).partition(|p| p.is_dir());
+    let takes: Vec<(PathBuf, String)> = dirs
+        .into_iter()
+        .filter(|d| d.join(take::SCREEN).is_file())
+        .filter_map(|d| {
+            let name = d.file_name()?.to_string_lossy().into_owned();
+            Some((d, name))
+        })
+        .collect();
+    for video in files.iter().filter(|p| matches!(p.extension().and_then(|e| e.to_str()), Some("mp4" | "gif"))) {
+        // The longest name wins: "Demo 2 1080p.mp4" is Demo 2's, not Demo's.
+        let Some((dir, _)) =
+            takes.iter().filter(|(_, name)| crate::editor::named_after(video, name)).max_by_key(|(_, name)| name.len())
+        else {
+            continue;
+        };
+        let mut moving = vec![video.clone()];
+        moving.extend(polishcast_export::caption_files(video).into_iter().filter(|c| c.is_file()));
+        for file in moving {
+            let Some(name) = file.file_name() else { continue };
+            let to = dir.join(name);
+            if !to.exists() {
+                let _ = std::fs::rename(&file, to);
+            }
+        }
+    }
 }
 
 /// `dir`, after moving `legacy` there if only `legacy` exists. The app was called Small Video, and
@@ -175,6 +212,17 @@ pub struct Entry {
     pub project: Option<Project>,
     /// Size of the recording in bytes.
     pub size: u64,
+    /// When the take was made: its folder's creation, else when its recording was last written.
+    pub made: Option<std::time::SystemTime>,
+}
+
+/// When the take in `dir` was made. Named takes can't be ordered by name: a take called
+/// "snwatch-demo" would sort above one called "2026-11-12 20.03.39" recorded after it.
+fn made(dir: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(dir)
+        .and_then(|m| m.created())
+        .or_else(|_| std::fs::metadata(dir.join(take::SCREEN)).and_then(|m| m.modified()))
+        .ok()
 }
 
 /// Every take in the library, newest first.
@@ -189,11 +237,17 @@ pub fn list() -> Vec<Entry> {
             name: dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
             project: Project::load(&dir.join(take::PROJECT)).ok(),
             size: std::fs::metadata(dir.join(take::SCREEN)).map_or(0, |m| m.len()),
+            made: made(&dir),
             dir,
         })
         .collect();
-    entries.sort_by(|a, b| b.name.cmp(&a.name));
+    newest_first(&mut entries);
     entries
+}
+
+/// Newest first by when each take was made, then by name for takes made at the same time.
+fn newest_first(entries: &mut [Entry]) {
+    entries.sort_by(|a, b| b.made.cmp(&a.made).then_with(|| b.name.cmp(&a.name)));
 }
 
 /// Moves a take's folder to the system Trash. On macOS through the file manager API rather
@@ -222,6 +276,46 @@ mod tests {
         std::fs::write(dir.join(take::SCREEN), b"not really a movie").unwrap();
         move_to_trash(&dir).unwrap();
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn exports_beside_the_takes_move_into_their_folders() {
+        let base = std::env::temp_dir().join(format!("polishcast-gather-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        for take in ["Demo", "Demo 2"] {
+            std::fs::create_dir_all(base.join(take)).unwrap();
+            std::fs::write(base.join(take).join(take::SCREEN), b"").unwrap();
+        }
+        for f in ["Demo.mp4", "Demo 1080p.mp4", "Demo 1080p.srt", "Demo 2 1080p.mp4", "Other.mp4", "Demo.jpg"] {
+            std::fs::write(base.join(f), b"").unwrap();
+        }
+        gather_exports(&base);
+        let names = |d: &Path| {
+            let mut n: Vec<String> =
+                std::fs::read_dir(d).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+            n.sort();
+            n
+        };
+        assert_eq!(names(&base), ["Demo", "Demo 2", "Demo.jpg", "Other.mp4"]);
+        assert_eq!(names(&base.join("Demo")), ["Demo 1080p.mp4", "Demo 1080p.srt", "Demo.mp4", "screen.mov"]);
+        assert_eq!(names(&base.join("Demo 2")), ["Demo 2 1080p.mp4", "screen.mov"]);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn the_newest_take_comes_first_whatever_its_name() {
+        use std::time::{Duration, UNIX_EPOCH};
+        let entry = |name: &str, secs| Entry {
+            dir: PathBuf::from(name),
+            name: name.into(),
+            project: None,
+            size: 0,
+            made: Some(UNIX_EPOCH + Duration::from_secs(secs)),
+        };
+        let mut entries = vec![entry("snwatch-demo", 100), entry("2026-11-12 20.03.39", 300), entry("api0-demo", 200)];
+        newest_first(&mut entries);
+        let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["2026-11-12 20.03.39", "api0-demo", "snwatch-demo"]);
     }
 
     #[test]

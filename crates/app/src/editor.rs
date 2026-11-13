@@ -576,7 +576,7 @@ pub(crate) fn clean_export_name(name: &str, format: Format) -> Option<String> {
 
 /// Where an export named `name` goes: next to the take's folder.
 pub(crate) fn export_path(dir: &std::path::Path, name: &str, format: Format) -> PathBuf {
-    dir.with_file_name(format!("{name}.{}", format.extension()))
+    dir.join(format!("{name}.{}", format.extension()))
 }
 
 /// The take's loudness, needed to find blanks: measured once (ffmpeg reads the sound) and kept
