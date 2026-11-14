@@ -16,6 +16,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- A video or post you make for an idea planned on the calendar now remembers
+  that idea, so a weekly goal in MiniCRM that pointed at the plan follows it
+  to what you made.
+
 ## [0.1.65] - 2026-11-13
 
 ### Changed
