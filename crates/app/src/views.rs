@@ -70,6 +70,37 @@ fn clock(d: Duration) -> String {
     format!("{}:{:02}", s / 60, s % 60)
 }
 
+/// When a take was recorded, short: "12 Nov 20:03", with the year for one from an earlier year.
+fn recorded(made: std::time::SystemTime, now: chrono::DateTime<chrono::Local>) -> String {
+    use chrono::Datelike;
+    let at = chrono::DateTime::<chrono::Local>::from(made);
+    if at.year() == now.year() {
+        at.format("%-d %b %H:%M").to_string()
+    } else {
+        at.format("%-d %b %Y %H:%M").to_string()
+    }
+}
+
+#[cfg(test)]
+mod recorded_tests {
+    use super::recorded;
+    use chrono::TimeZone;
+
+    #[test]
+    fn a_take_from_this_year_shows_day_month_and_time() {
+        let at = chrono::Local.with_ymd_and_hms(2026, 11, 12, 20, 3, 39).unwrap();
+        let now = chrono::Local.with_ymd_and_hms(2026, 11, 15, 9, 0, 0).unwrap();
+        assert_eq!(recorded(at.into(), now), "12 Nov 20:03");
+    }
+
+    #[test]
+    fn a_take_from_an_earlier_year_shows_the_year() {
+        let at = chrono::Local.with_ymd_and_hms(2025, 3, 4, 8, 5, 0).unwrap();
+        let now = chrono::Local.with_ymd_and_hms(2026, 1, 2, 9, 0, 0).unwrap();
+        assert_eq!(recorded(at.into(), now), "4 Mar 2025 08:05");
+    }
+}
+
 #[component]
 pub fn App() -> Element {
     let recorder = use_hook(Recorder::spawn);

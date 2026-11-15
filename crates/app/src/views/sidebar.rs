@@ -110,6 +110,9 @@ pub(super) fn sidebar(
                         },
                         span { class: "name", "{entry.name}" }
                         span { class: "meta",
+                            if let Some(made) = entry.made {
+                                "{recorded(made, chrono::Local::now())} · "
+                            }
                             if let Some(p) = &entry.project {
                                 "{clock(Duration::from_secs_f64(p.duration))} · {p.width}×{p.height} · "
                             }
