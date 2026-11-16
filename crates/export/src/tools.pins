@@ -1,0 +1,7 @@
+# Written by scripts/pin-tools.sh: tool os arch sha256 url. Do not edit by hand.
+ffmpeg windows x86_64 7c3535fd0e0960bbebb8bf8acc71292e855c97f58a628fd4f43aacc2adc16c87 https://github.com/yt-dlp/FFmpeg-Builds/releases/download/autobuild-2026-10-31-18-18/ffmpeg-N-128251-g6d1bfd7609-win64-gpl.zip
+ffmpeg windows aarch64 abcaf92f34c4ea8983b42581d0bd8fa85e4cf11ecc67136c3f0ec0c60905e668 https://github.com/yt-dlp/FFmpeg-Builds/releases/download/autobuild-2026-10-31-18-18/ffmpeg-N-128251-g6d1bfd7609-winarm64-gpl.zip
+ffmpeg macos x86_64 7c6b4125b191cbf773832dc51f424cf2b6bb7da43007d1e066f95909e47cacd4 https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip
+ffmpeg macos aarch64 c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924 https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip
+ffmpeg linux x86_64 fa8ecf4abbd290d98f7d188b8649cc6b391ae209a98452be955a15aab1909d7f https://ffmpeg.martin-riedl.de/download/linux/amd64/1789931100_9.0.2/ffmpeg.zip
+ffmpeg linux aarch64 93a76ae90db5474eecdf951a729857c64f3de23567228d6a7d5e6e8e3cd1021b https://ffmpeg.martin-riedl.de/download/linux/arm64/1789931697_9.0.2/ffmpeg.zip
