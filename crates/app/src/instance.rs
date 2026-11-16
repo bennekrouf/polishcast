@@ -7,7 +7,7 @@
 //! on a local port, written beside it. A later launch finds the lock taken, asks that instance
 //! to show its window, and exits. `polishcast mcp` asks it to record on the same port (`remote`).
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,6 +15,9 @@ use std::time::Duration;
 
 /// What a later launch asks for.
 const SHOW: &str = "show";
+/// The longest request read. Any local program can connect: it must not be able to make the
+/// app hold all it sends. A recording request is a few hundred bytes of JSON.
+const MAX_REQUEST: u64 = 64 * 1024;
 
 /// Set when a later launch asked for the window; the app shows it and clears it.
 static SHOW_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -77,7 +80,8 @@ fn answer(mut stream: TcpStream, token: &str) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let mut line = String::new();
     let Ok(clone) = stream.try_clone() else { return };
-    if BufReader::new(clone).read_line(&mut line).is_err() {
+    let Ok(n) = BufReader::new(clone.take(MAX_REQUEST)).read_line(&mut line) else { return };
+    if n as u64 == MAX_REQUEST && !line.ends_with('\n') {
         return;
     }
     if line.trim() == SHOW {
@@ -108,6 +112,29 @@ pub fn take_show_request() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sends `request` to `answer` over a real local connection and returns what came back.
+    fn ask(request: Vec<u8>) -> String {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || answer(listener.accept().unwrap().0, "secret"));
+        let mut client = TcpStream::connect(addr).unwrap();
+        // The server may stop reading before all of it is sent.
+        let _ = client.write_all(&request);
+        let _ = client.shutdown(std::net::Shutdown::Write);
+        let mut reply = String::new();
+        let _ = client.read_to_string(&mut reply);
+        server.join().unwrap();
+        reply
+    }
+
+    #[test]
+    fn requests_past_the_limit_are_not_read_to_the_end() {
+        assert!(ask(b"{}\n".to_vec()).contains("not allowed"));
+        let mut huge = vec![b'a'; 4 * MAX_REQUEST as usize];
+        huge.push(b'\n');
+        assert_eq!(ask(huge), "", "a request past the limit was answered");
+    }
 
     #[test]
     fn a_second_launch_hands_over_to_the_first() {

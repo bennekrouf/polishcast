@@ -113,7 +113,8 @@ encodes them with VideoToolbox (hardware H.264, ~0.1 bit per pixel) and the reco
 as AAC. 12 s of 1080p60 takes about 10 s on an M-series Mac (release build).
 
 Export needs ffmpeg. The app uses its own copy (downloaded on first use into its data folder's
-`tools/`, checked against its published SHA-256, as in TrackCut), or else one on the PATH, in
+`tools/`, pinned to the build and SHA-256 in `crates/export/src/tools.pins`, as in TrackCut;
+`scripts/pin-tools.sh` moves the pin), or else one on the PATH, in
 Homebrew's folders or in TrackCut's tools folder.
 
 ### Use from Claude (MCP)

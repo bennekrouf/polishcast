@@ -16,6 +16,25 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- ffmpeg is now pinned: each PolishCast release names the exact build it
+  downloads and the checksum that file must have, and refuses any other file.
+  Until now PolishCast took whatever build was newest, checked against a
+  checksum from the same server, so a server serving something else would
+  have been believed. The first export after this update fetches the pinned
+  build once, replacing the ffmpeg already installed.
+
+### Fixed
+
+- Export and compacting could not set up ffmpeg on Macs with Apple silicon:
+  the download site's link to its newest build had stopped working.
+- The local connections the editor and a second launch use, which any program
+  on the computer can reach, no longer read a request without limit: such a
+  program could make PolishCast use more and more memory.
+
 ## [0.1.67] - 2026-11-15
 
 ### Changed
