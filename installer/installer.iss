@@ -41,7 +41,12 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ; Windows.Graphics.Capture with its capture settings needs Windows 10 2004 (build 19041).
 MinVersion=10.0.19041
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
-CloseApplications=yes
+; The running app is killed in [Code] before files are touched (see KillApp).
+; Restart Manager alone could leave "Setup was unable to automatically close
+; all applications" with Try again stuck, e.g. when an ffmpeg child or a
+; minimized window held the exe. force: never offer to skip closing.
+CloseApplications=force
+RestartApplications=no
 ; Shows the licence (PolyForm Noncommercial) as a page the user accepts before installing.
 LicenseFile=..\LICENSE
 ; Branding — uses assets\icon.ico if present. Comment these out if the file
@@ -62,6 +67,10 @@ Name: "desktopicon"; \
 [Files]
 Source: "..\target\release\polishcast.exe";        DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\WebView2Loader.dll";  DestDir: "{app}"; Flags: ignoreversion
+; ffmpeg, shipped so nothing is downloaded at first use, with its GPL notice.
+Source: "..\target\release\ffmpeg.exe";          DestDir: "{app}"; Flags: ignoreversion
+Source: "..\target\release\ffmpeg-LICENSE.txt";  DestDir: "{app}"; Flags: ignoreversion
+Source: "..\target\release\ffmpeg-SOURCE.txt";   DestDir: "{app}"; Flags: ignoreversion
 ; Ship the .ico alongside the .exe so shortcuts can point at it explicitly —
 ; otherwise some Windows builds fail to extract the embedded icon for shortcut
 ; display, leaving a generic icon on the Start menu / desktop.
@@ -118,6 +127,25 @@ begin
   Result := UninstStr;
 end;
 
+// Force-close PolishCast and anything it started (ffmpeg, webview) so the
+// uninstall and the file copy never find the exe in use.
+procedure KillApp();
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM {#MyAppExeName}', '',
+       SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(800);
+end;
+
+// Runs on the Preparing page, before the in-use check: kill once more in case
+// the app was relaunched while the wizard was open.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  KillApp();
+  Result := '';
+end;
+
 function InitializeSetup(): Boolean;
 var
   InstalledVer: String;
@@ -156,11 +184,16 @@ begin
       Exit;
     end;
 
-  // Silent uninstall of the previous version
+  KillApp();
+
+  // Silent uninstall of the previous version. If it fails (files still
+  // locked, broken uninstaller), carry on: the new files overwrite the old
+  // ones in place and the in-use check runs again after another kill.
   UninstStr := GetUninstallString();
   if UninstStr <> '' then
   begin
-    Exec('>', UninstStr, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Sleep(500);
+    Exec('>', UninstStr + ' /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE,
+         ewWaitUntilTerminated, ResultCode);
+    Sleep(1000);
   end;
 end;

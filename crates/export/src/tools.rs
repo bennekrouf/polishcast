@@ -82,6 +82,11 @@ pub fn dir() -> PathBuf {
     dirs::data_local_dir().unwrap_or_else(|| PathBuf::from(".")).join("Small Video").join("tools")
 }
 
+/// The app's own folder, where the Windows installers put the ffmpeg they ship.
+pub fn bundled_dir() -> Option<PathBuf> {
+    std::env::current_exe().ok()?.parent().map(Path::to_path_buf)
+}
+
 /// A command that doesn't open a console window next to the app on Windows.
 pub fn command(program: &Path) -> Command {
     #[allow(unused_mut)]

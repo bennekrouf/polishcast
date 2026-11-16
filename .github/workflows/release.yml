@@ -380,6 +380,40 @@ jobs:
           if ($dll) { Copy-Item $dll.FullName "target\release\WebView2Loader.dll" -Force }
           else { Write-Error "WebView2Loader.dll not found in build output" }
 
+      # ffmpeg ships inside the installers, so nothing is downloaded at first
+      # use (company networks often block that). The same pinned build the app
+      # would fetch, checked against its SHA-256, placed beside the app before
+      # signing so it is signed with it.
+      - name: Fetch pinned ffmpeg
+        shell: pwsh
+        run: |
+          $pin = Get-Content crates\export\src\tools.pins | Where-Object { $_ -match '^ffmpeg\s+windows\s+x86_64\s' } | Select-Object -First 1
+          if (-not $pin) { Write-Error "No ffmpeg pin for windows x86_64"; exit 1 }
+          $f = $pin -split '\s+'
+          $sha = $f[3]; $url = $f[4]
+          Invoke-WebRequest $url -OutFile ffmpeg.zip
+          $got = (Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $sha) { Write-Error "ffmpeg.zip hash $got, pinned $sha"; exit 1 }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead("$PWD\ffmpeg.zip")
+          try {
+            $exe = $zip.Entries | Where-Object { $_.FullName -match '/bin/ffmpeg\.exe$' } | Select-Object -First 1
+            if (-not $exe) { Write-Error "ffmpeg.exe not in the zip"; exit 1 }
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($exe, "$PWD\target\release\ffmpeg.exe", $true)
+            $lic = $zip.Entries | Where-Object { $_.Name -eq 'LICENSE.txt' } | Select-Object -First 1
+            if ($lic) { [IO.Compression.ZipFileExtensions]::ExtractToFile($lic, "$PWD\target\release\ffmpeg-LICENSE.txt", $true) }
+            else { Write-Error "LICENSE.txt not in the zip"; exit 1 }
+          } finally { $zip.Dispose() }
+          # The GPL asks that whoever passes the binary on says where its source is.
+          @"
+          ffmpeg.exe is FFmpeg, built by the yt-dlp project and shipped unchanged.
+          Licensed under the GNU General Public License, version 3: see ffmpeg-LICENSE.txt.
+          This build: $url
+          Its source and build scripts: https://github.com/yt-dlp/FFmpeg-Builds
+          FFmpeg's source: https://ffmpeg.org/download.html
+          "@ -replace '(?m)^\s+', '' | Out-File target\release\ffmpeg-SOURCE.txt -Encoding ASCII
+          Remove-Item ffmpeg.zip
+
       # ── Windows code signing ───────────────────────────────────────────────
       # Both the application binary and the installer get signed, in that
       # order: Inno Setup embeds whatever polishcast.exe it finds, so signing
@@ -445,6 +479,39 @@ jobs:
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           & $iscc /DMyAppVersion=$version installer\installer.iss
 
+      # The .msi for IT departments (Intune, Group Policy), beside the .exe.
+      # Same signed binary inside; see installer/polishcast.wxs.
+      - name: Install WiX
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add --global WixToolset.Util.wixext/5.0.2
+
+      - name: Build .msi
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.tag || github.ref_name }}".TrimStart("v")
+          wix build installer\polishcast.wxs -ext WixToolset.Util.wixext -arch x64 `
+            -d Version=$version -o dist\polishcast.msi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item dist\polishcast.wixpdb -ErrorAction SilentlyContinue
+
+      - name: Sign .msi
+        if: steps.winsign.outputs.have == 'true'
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id:     ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id:     ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint:                     ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name:     ${{ secrets.TRUSTED_SIGNING_CERT_PROFILE }}
+          files-folder: dist
+          files-folder-filter: msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
       - name: Sign installer
         if: steps.winsign.outputs.have == 'true'
         uses: azure/trusted-signing-action@v0
@@ -468,6 +535,8 @@ jobs:
         run: |
           $hash = (Get-FileHash dist\polishcast-setup.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  polishcast-setup.exe" | Out-File "dist\polishcast-setup.exe.sha256" -Encoding ASCII
+          $msi = (Get-FileHash dist\polishcast.msi -Algorithm SHA256).Hash.ToLower()
+          "$msi  polishcast.msi" | Out-File "dist\polishcast.msi.sha256" -Encoding ASCII
           Write-Host "Installer: dist\polishcast-setup.exe ($([math]::Round((Get-Item dist\polishcast-setup.exe).Length/1MB,1)) MB)"
 
       # Signing provider: the steps above use Azure Trusted Signing. SignPath
@@ -482,6 +551,8 @@ jobs:
           path: |
             dist\polishcast-setup.exe
             dist\polishcast-setup.exe.sha256
+            dist\polishcast.msi
+            dist\polishcast.msi.sha256
 
   release:
     needs: [prepare, build-mac, build-windows]
@@ -684,6 +755,11 @@ jobs:
 
           ### Windows (10 version 2004 or later, 11 recommended)
           Download `polishcast-setup.exe` and run it — the installer handles everything.
+
+          ### Windows, for IT departments
+          `polishcast.msi` deploys with Intune, Group Policy or SCCM.
+          For every user: `msiexec /i polishcast.msi ALLUSERS=1 /qn`.
+          Double-clicked, it installs for the current user only, with no admin prompt.
           EOF
 
           # A re-run of a failed build (a macOS runner that never came) finds
