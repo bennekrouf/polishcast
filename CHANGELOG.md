@@ -20,9 +20,6 @@ user sees in the update prompt should all be accounted for.
 
 ### Added
 
-- The Windows installers (.exe and .msi) now include ffmpeg, so exporting
-  works straight away, with nothing downloaded at first use. That download
-  was often blocked on company networks.
 - PolishCast is now also published as an .msi for IT departments, to deploy
   with Intune, Group Policy or SCCM: `msiexec /i polishcast.msi ALLUSERS=1 /qn`
   installs it for every user. Double-clicked, it installs for you alone with no

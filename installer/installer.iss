@@ -67,10 +67,6 @@ Name: "desktopicon"; \
 [Files]
 Source: "..\target\release\polishcast.exe";        DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\WebView2Loader.dll";  DestDir: "{app}"; Flags: ignoreversion
-; ffmpeg, shipped so nothing is downloaded at first use, with its GPL notice.
-Source: "..\target\release\ffmpeg.exe";          DestDir: "{app}"; Flags: ignoreversion
-Source: "..\target\release\ffmpeg-LICENSE.txt";  DestDir: "{app}"; Flags: ignoreversion
-Source: "..\target\release\ffmpeg-SOURCE.txt";   DestDir: "{app}"; Flags: ignoreversion
 ; Ship the .ico alongside the .exe so shortcuts can point at it explicitly —
 ; otherwise some Windows builds fail to extract the embedded icon for shortcut
 ; display, leaving a generic icon on the Start menu / desktop.

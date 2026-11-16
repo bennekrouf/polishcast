@@ -143,7 +143,7 @@ impl std::fmt::Display for Cancelled {
 
 impl std::error::Error for Cancelled {}
 
-/// An installed ffmpeg: the one shipped beside the app, ours, then the PATH, then where Homebrew, winget, Scoop, Chocolatey and
+/// An installed ffmpeg: ours, then the PATH, then where Homebrew, winget, Scoop, Chocolatey and
 /// TrackCut put it. Apps opened from the Finder don't get the shell's PATH, and an app already
 /// open doesn't see an install made since, hence the fixed places.
 pub fn ffmpeg() -> Option<PathBuf> {
@@ -164,13 +164,7 @@ pub fn ffmpeg() -> Option<PathBuf> {
         fixed.push(home.join("scoop").join("shims"));
         fixed.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin"));
     }
-    tools::bundled_dir()
-        .into_iter()
-        .chain(std::iter::once(tools::dir()))
-        .chain(path)
-        .chain(fixed)
-        .map(|dir| dir.join(&name))
-        .find(|p| p.is_file())
+    std::iter::once(tools::dir()).chain(path).chain(fixed).map(|dir| dir.join(&name)).find(|p| p.is_file())
 }
 
 /// The `bin` folders of the ffmpeg packages winget unpacked into `packages`

@@ -380,40 +380,6 @@ jobs:
           if ($dll) { Copy-Item $dll.FullName "target\release\WebView2Loader.dll" -Force }
           else { Write-Error "WebView2Loader.dll not found in build output" }
 
-      # ffmpeg ships inside the installers, so nothing is downloaded at first
-      # use (company networks often block that). The same pinned build the app
-      # would fetch, checked against its SHA-256, placed beside the app before
-      # signing so it is signed with it.
-      - name: Fetch pinned ffmpeg
-        shell: pwsh
-        run: |
-          $pin = Get-Content crates\export\src\tools.pins | Where-Object { $_ -match '^ffmpeg\s+windows\s+x86_64\s' } | Select-Object -First 1
-          if (-not $pin) { Write-Error "No ffmpeg pin for windows x86_64"; exit 1 }
-          $f = $pin -split '\s+'
-          $sha = $f[3]; $url = $f[4]
-          Invoke-WebRequest $url -OutFile ffmpeg.zip
-          $got = (Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash.ToLower()
-          if ($got -ne $sha) { Write-Error "ffmpeg.zip hash $got, pinned $sha"; exit 1 }
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [IO.Compression.ZipFile]::OpenRead("$PWD\ffmpeg.zip")
-          try {
-            $exe = $zip.Entries | Where-Object { $_.FullName -match '/bin/ffmpeg\.exe$' } | Select-Object -First 1
-            if (-not $exe) { Write-Error "ffmpeg.exe not in the zip"; exit 1 }
-            [IO.Compression.ZipFileExtensions]::ExtractToFile($exe, "$PWD\target\release\ffmpeg.exe", $true)
-            $lic = $zip.Entries | Where-Object { $_.Name -eq 'LICENSE.txt' } | Select-Object -First 1
-            if ($lic) { [IO.Compression.ZipFileExtensions]::ExtractToFile($lic, "$PWD\target\release\ffmpeg-LICENSE.txt", $true) }
-            else { Write-Error "LICENSE.txt not in the zip"; exit 1 }
-          } finally { $zip.Dispose() }
-          # The GPL asks that whoever passes the binary on says where its source is.
-          @"
-          ffmpeg.exe is FFmpeg, built by the yt-dlp project and shipped unchanged.
-          Licensed under the GNU General Public License, version 3: see ffmpeg-LICENSE.txt.
-          This build: $url
-          Its source and build scripts: https://github.com/yt-dlp/FFmpeg-Builds
-          FFmpeg's source: https://ffmpeg.org/download.html
-          "@ -replace '(?m)^\s+', '' | Out-File target\release\ffmpeg-SOURCE.txt -Encoding ASCII
-          Remove-Item ffmpeg.zip
-
       # ── Windows code signing ───────────────────────────────────────────────
       # Both the application binary and the installer get signed, in that
       # order: Inno Setup embeds whatever polishcast.exe it finds, so signing

@@ -94,16 +94,6 @@
         <Component Id="WebView2Loader">
           <File Source="..\target\release\WebView2Loader.dll" KeyPath="yes" />
         </Component>
-        <!-- ffmpeg, shipped so nothing is downloaded at first use, with its GPL notice. -->
-        <Component Id="Ffmpeg">
-          <File Source="..\target\release\ffmpeg.exe" KeyPath="yes" />
-        </Component>
-        <Component Id="FfmpegLicence">
-          <File Source="..\target\release\ffmpeg-LICENSE.txt" KeyPath="yes" />
-        </Component>
-        <Component Id="FfmpegSource">
-          <File Source="..\target\release\ffmpeg-SOURCE.txt" KeyPath="yes" />
-        </Component>
         <Component Id="AppIcon">
           <File Id="IconFile" Source="..\crates\app\assets\icon.ico" KeyPath="yes" />
         </Component>
@@ -128,9 +118,6 @@
       <ComponentRef Id="App" />
       <ComponentRef Id="WebView2Loader" />
       <ComponentRef Id="AppIcon" />
-      <ComponentRef Id="Ffmpeg" />
-      <ComponentRef Id="FfmpegLicence" />
-      <ComponentRef Id="FfmpegSource" />
       <ComponentRef Id="StartMenuShortcut" />
     </Feature>
   </Package>
