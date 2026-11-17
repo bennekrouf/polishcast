@@ -37,7 +37,7 @@
     <Launch Condition="Installed OR WindowsBuild &gt;= 19041"
             Message="PolishCast needs Windows 10 version 2004 or later." />
 
-    <Icon Id="PolishCastIcon" SourceFile="..\crates\app\assets\icon.ico" />
+    <Icon Id="PolishCastIcon" SourceFile="crates\app\assets\icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="PolishCastIcon" />
     <Property Id="ARPURLINFOABOUT" Value="https://mayorana.ch/en/apps/polishcast" />
     <Property Id="ARPHELPLINK" Value="https://github.com/bennekrouf/polishcast/issues" />
@@ -89,13 +89,13 @@
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="PolishCast">
         <Component Id="App">
-          <File Id="PolishCastExe" Source="..\target\release\polishcast.exe" KeyPath="yes" />
+          <File Id="PolishCastExe" Source="target\release\polishcast.exe" KeyPath="yes" />
         </Component>
         <Component Id="WebView2Loader">
-          <File Source="..\target\release\WebView2Loader.dll" KeyPath="yes" />
+          <File Source="target\release\WebView2Loader.dll" KeyPath="yes" />
         </Component>
         <Component Id="AppIcon">
-          <File Id="IconFile" Source="..\crates\app\assets\icon.ico" KeyPath="yes" />
+          <File Id="IconFile" Source="crates\app\assets\icon.ico" KeyPath="yes" />
         </Component>
       </Directory>
     </StandardDirectory>
