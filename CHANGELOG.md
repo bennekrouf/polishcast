@@ -16,6 +16,18 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- The MCP window now connects PolishCast for you. For Claude Desktop, Claude
+  Code, Codex and VS Code it shows whether PolishCast is installed there and
+  running, with Install, Update and Uninstall buttons, and a Test that starts
+  the server and counts its tools. Before, you copied commands and edited
+  Claude's config file yourself; those steps are still there, under By hand.
+- Claude Desktop undoes a change made to its settings while it is open:
+  PolishCast waits for you to quit it, then installs.
+
 ## [0.1.70] - 2026-11-17
 
 ### Changed
