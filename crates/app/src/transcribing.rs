@@ -121,6 +121,7 @@ fn chat(system: &str, user: &str) -> Result<String, String> {
         .header("Authorization", &format!("Bearer {licence}"))
         .header("X-Client-App", polishcast_core::license::PRODUCT)
         .header("X-Task", "text")
+        .header("X-Feature", "name_chapters")
         .header("Content-Type", "application/json")
         .send(body.to_string().as_bytes())
         .map_err(|e| format!("api0 is unreachable: {}", http::describe(&e)))?;
