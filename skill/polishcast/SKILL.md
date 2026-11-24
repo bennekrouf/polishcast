@@ -23,9 +23,11 @@ the app is not connected:
 - Tell the user PolishCast is a separate desktop app, from
   <https://mayorana.ch/en/apps/polishcast>, and that this skill only works with
   it installed. Do not download or install it for them.
-- Once installed, the **MCP** button next to *Get Pro…* shows the exact
-  config for Claude Desktop and the command for Claude Code and Codex.
-  `references/connect.md` has the steps per client.
+- Once it is installed, the **MCP** button at the top of its window adds its
+  server to Claude Desktop, Claude Code, Codex and VS Code, and shows where it
+  is installed and running. The user presses it: do not change their agent's
+  configuration for them. `references/connect.md` has the steps for other
+  clients.
 
 ## Recording
 

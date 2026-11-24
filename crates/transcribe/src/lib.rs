@@ -160,6 +160,7 @@ fn request(mp3: &[u8], options: &Options, language: Option<&str>) -> Result<Valu
         .header("Content-Type", &format!("multipart/form-data; boundary={boundary}"))
         .header("X-Client-App", polishcast_core::license::PRODUCT)
         .header("X-Task", TASK)
+        .header("X-Feature", "transcribe")
         .send(&body[..])
         .map_err(|e| anyhow!("api0 is unreachable: {}", http::describe(&e)))?;
     let status = resp.status().as_u16();

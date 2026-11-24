@@ -120,13 +120,14 @@ Homebrew's folders or in TrackCut's tools folder.
 ### Use from Claude (MCP)
 
 `polishcast mcp` serves the takes to an MCP client over stdio, with no window
-(`app/src/mcp.rs`); the **MCP** button next to Get Pro… shows the Claude Desktop config
-and the Claude Code command. The tools: `list_takes`, `get_take`, `set_zooms`, `set_masks`,
-`set_clips`, `set_blanks`, `set_style` and `export`, on the editor's own helpers
-(`export_path`, `measure`, `cut_blanks`, `toggle_clip`) and the same free-export count.
-Each tool reads `project.json`, changes it and writes it back at once; an open editor
-checks the file every 2 s and takes a change in as one undo step. `POLISHCAST_LIBRARY`
-points it at another library, as it does the app.
+(`app/src/mcp.rs`). The **MCP** button at the top of the window installs it in Claude
+Desktop, Claude Code, Codex and VS Code, shows where it is installed and running, and
+tests it. The tools: `list_takes`, `get_take`, `set_zooms`, `set_masks`, `set_clips`,
+`set_blanks`, `set_style` and `export`, on the editor's own helpers (`export_path`,
+`measure`, `cut_blanks`, `toggle_clip`) and the same free-export count. Each tool reads
+`project.json`, changes it and writes it back at once; an open editor checks the file
+every 2 s and takes a change in as one undo step. `POLISHCAST_LIBRARY` points it at
+another library, as it does the app.
 
 Recording: `list_sources`, `start_recording`, `stop_recording`, `recording_status` and
 `cancel_recording` (`app/src/remote.rs`). The MCP process doesn't record; it asks the
