@@ -74,6 +74,8 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
     let mut fraction = use_signal(|| 0.0f32);
     // What sending the last export to PublishKit did.
     let mut sent = use_signal(|| None::<Result<(), String>>);
+    // The MP4 just exported, while the popup announcing it is open.
+    let mut finished_popup = use_signal(|| None::<PathBuf>);
     // ffmpeg is being fetched before the first export.
     let mut downloading = use_signal(|| false);
     // The take's name: what the free version's exports are counted by.
@@ -99,6 +101,9 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
                     match finished {
                         Some((Ok(()), out)) => {
                             pro.exported(&take);
+                            if out.extension().is_some_and(|e| e == "mp4") {
+                                finished_popup.set(Some(out.clone()));
+                            }
                             state.set(Export::Done(out));
                         }
                         Some((Err(e), _)) if e.is::<polishcast_export::Cancelled>() => state.set(Export::Idle),
@@ -155,6 +160,9 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
     let (sizes, rates) = if gif { (GIF_SIZES, GIF_FRAME_RATES) } else { (RESOLUTIONS, FRAME_RATES) };
     let kind = if gif { "GIF" } else { "MP4" };
     rsx! {
+        if let Some(path) = finished_popup() {
+            ExportedDialog { path, on_close: move |_| finished_popup.set(None) }
+        }
         if let Some(suggested) = naming() {
             ExportDialog {
                 dir: dir.clone(),
@@ -315,6 +323,64 @@ pub(super) fn ExportPanel(doc: Doc, dir: PathBuf) -> Element {
                         }
                     }
                 },
+            }
+        }
+    }
+}
+
+/// Says where the MP4 just exported was saved, with buttons to show it in its folder and to
+/// play it: Enter plays, Esc closes.
+#[component]
+pub(super) fn ExportedDialog(path: PathBuf, on_close: EventHandler<()>) -> Element {
+    let play = {
+        let path = path.clone();
+        move || {
+            platform::open(&path);
+            on_close.call(());
+        }
+    };
+    let reveal = {
+        let path = path.clone();
+        move || {
+            platform::reveal(&path);
+            on_close.call(());
+        }
+    };
+    let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let full = path.display().to_string();
+    rsx! {
+        div { class: "modal-backdrop", onclick: move |_| on_close.call(()),
+            div {
+                class: "modal",
+                tabindex: "0",
+                onclick: move |e| e.stop_propagation(),
+                onmounted: move |e| async move {
+                    let _ = e.set_focus(true).await;
+                },
+                onkeydown: {
+                    let play = play.clone();
+                    move |e: KeyboardEvent| {
+                        e.stop_propagation();
+                        match e.key() {
+                            Key::Enter => play(),
+                            Key::Escape => on_close.call(()),
+                            _ => {}
+                        }
+                    }
+                },
+                div { class: "modal-head",
+                    h2 { "Video exported" }
+                    button { class: "modal-close", title: "Close", onclick: move |_| on_close.call(()), "×" }
+                }
+                div { class: "modal-body",
+                    p { class: "delete-name", "{name}" }
+                    p { class: "export-path", title: "{full}", "{full}" }
+                    div { class: "modal-actions",
+                        button { class: "left", onclick: move |_| on_close.call(()), "Close" kbd { "Esc" } }
+                        button { onclick: move |_| reveal(), {platform::SHOW_IN_FOLDER} }
+                        button { class: "primary", onclick: move |_| play(), "Play" kbd { "Enter" } }
+                    }
+                }
             }
         }
     }
