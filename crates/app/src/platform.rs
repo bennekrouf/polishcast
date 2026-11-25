@@ -48,6 +48,21 @@ pub fn reveal(path: &Path) {
     let _ = std::process::Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn();
 }
 
+/// Opens `path` in the app the system uses for its kind of file (a video plays in the default
+/// player).
+pub fn open(path: &Path) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(path).spawn();
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // `start` takes its first quoted argument as the window's title, hence the empty one.
+        let _ = std::process::Command::new("cmd").raw_arg(format!("/C start \"\" \"{}\"", path.display())).spawn();
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+}
+
 /// Leaves the app's window out of screen recordings. On macOS the capture filter already
 /// excludes the app; on Windows each window has to opt out (Windows 10 2004 or later).
 pub fn exclude_from_capture(window: &dioxus::desktop::DesktopContext) {

@@ -16,6 +16,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- When an MP4 export finishes, a popup shows where the video was saved, with
+  its full path, and buttons to show it in Finder (Explorer on Windows) or
+  play it right away.
+
 ## [0.1.71] - 2026-11-24
 
 ### Changed
